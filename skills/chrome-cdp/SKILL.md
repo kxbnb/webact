@@ -9,7 +9,7 @@ Control Chrome directly via the Chrome DevTools Protocol. No Playwright, no MCP 
 
 ## Quick Reference
 
-All commands use the helper at `~/.claude/skills/chrome-cdp/cdp.js`:
+All commands use `cdp.js` from this skill's base directory. The base directory is provided when the skill loads — use it as the path prefix. Example: `node <base-dir>/cdp.js <command>`
 
 | Command | Purpose |
 |---------|---------|
@@ -90,11 +90,13 @@ digraph perceive_act {
 
 ```bash
 # First time: launch Chrome
-node ~/.claude/skills/chrome-cdp/cdp.js launch
+node <base-dir>/cdp.js launch
 
 # If user already has Chrome open with debugging:
-node ~/.claude/skills/chrome-cdp/cdp.js connect
+node <base-dir>/cdp.js connect
 ```
+
+**Important:** Before first use, install dependencies: `cd <base-dir> && npm install`
 
 If Chrome is not running with debugging enabled, `launch` will start a new instance. If already running on port 9222, it connects to the existing instance.
 

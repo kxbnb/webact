@@ -1,0 +1,15 @@
+{
+  "name": "chrome-cdp",
+  "description": "Chrome DevTools Protocol browser control for Claude Code",
+  "owner": {
+    "name": "kxbnb"
+  },
+  "plugins": [
+    {
+      "name": "chrome-cdp",
+      "description": "Control Chrome via raw CDP - browse the web, interact with pages, accomplish goals through a perceive-act loop",
+      "version": "1.0.0",
+      "source": "./"
+    }
+  ]
+}

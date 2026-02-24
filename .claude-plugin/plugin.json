@@ -1,0 +1,12 @@
+{
+  "name": "chrome-cdp",
+  "description": "Control Chrome via raw CDP - browse the web, interact with pages, accomplish goals through a perceive-act loop",
+  "version": "1.0.0",
+  "author": {
+    "name": "kxbnb"
+  },
+  "homepage": "https://github.com/kxbnb/chrome-cdp",
+  "repository": "https://github.com/kxbnb/chrome-cdp",
+  "license": "MIT",
+  "keywords": ["chrome", "cdp", "browser", "web", "automation"]
+}
