@@ -130,10 +130,14 @@ async function cmdLaunch() {
     return cmdConnect();
   } catch {}
 
+  const home = process.env.HOME || '';
   const chromePaths = [
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    `${home}/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`,
     '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+    `${home}/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary`,
     '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    `${home}/Applications/Chromium.app/Contents/MacOS/Chromium`,
   ];
 
   let chromePath;
