@@ -146,44 +146,98 @@ async function withCDP(fn) {
 
 // --- Commands ---
 
-async function cmdLaunch() {
-  // Check if Chrome is already running on 9222
-  try {
-    await getDebugTabs();
-    console.log('Chrome already running on port 9222.');
-    return cmdConnect();
-  } catch {}
+// --- Browser detection ---
+// All Chromium-based browsers support CDP. Ordered by preference.
 
-  const home = process.env.HOME || '';
-  const chromePaths = [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    `${home}/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`,
-    '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
-    `${home}/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary`,
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    `${home}/Applications/Chromium.app/Contents/MacOS/Chromium`,
-  ];
-
-  let chromePath;
-  for (const p of chromePaths) {
-    if (fs.existsSync(p)) {
-      chromePath = p;
-      break;
+function findBrowser() {
+  if (process.env.CHROME_PATH) {
+    if (fs.existsSync(process.env.CHROME_PATH)) {
+      return { path: process.env.CHROME_PATH, name: path.basename(process.env.CHROME_PATH) };
     }
-  }
-
-  if (!chromePath) {
-    console.error('Chrome not found. Install Google Chrome or set CHROME_PATH.');
+    console.error(`CHROME_PATH set but not found: ${process.env.CHROME_PATH}`);
     process.exit(1);
   }
 
-  if (process.env.CHROME_PATH) {
-    chromePath = process.env.CHROME_PATH;
+  const home = process.env.HOME || '';
+  const platform = process.platform;
+
+  // Each entry: [path, display name]
+  const candidates = [];
+
+  if (platform === 'darwin') {
+    const macApps = [
+      // /Applications and ~/Applications for each
+      ['Google Chrome',         'Google Chrome.app/Contents/MacOS/Google Chrome'],
+      ['Google Chrome Canary',  'Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary'],
+      ['Microsoft Edge',        'Microsoft Edge.app/Contents/MacOS/Microsoft Edge'],
+      ['Brave Browser',         'Brave Browser.app/Contents/MacOS/Brave Browser'],
+      ['Arc',                   'Arc.app/Contents/MacOS/Arc'],
+      ['Vivaldi',               'Vivaldi.app/Contents/MacOS/Vivaldi'],
+      ['Opera',                 'Opera.app/Contents/MacOS/Opera'],
+      ['Chromium',              'Chromium.app/Contents/MacOS/Chromium'],
+    ];
+    for (const [name, rel] of macApps) {
+      candidates.push([`/Applications/${rel}`, name]);
+      candidates.push([`${home}/Applications/${rel}`, name]);
+    }
+  } else if (platform === 'linux') {
+    candidates.push(
+      ['/usr/bin/google-chrome-stable', 'Google Chrome'],
+      ['/usr/bin/google-chrome', 'Google Chrome'],
+      ['/usr/bin/microsoft-edge-stable', 'Microsoft Edge'],
+      ['/usr/bin/microsoft-edge', 'Microsoft Edge'],
+      ['/usr/bin/brave-browser', 'Brave Browser'],
+      ['/usr/bin/vivaldi-stable', 'Vivaldi'],
+      ['/usr/bin/opera', 'Opera'],
+      ['/usr/bin/chromium-browser', 'Chromium'],
+      ['/usr/bin/chromium', 'Chromium'],
+      ['/snap/bin/chromium', 'Chromium (snap)'],
+    );
+  } else if (platform === 'win32') {
+    const pf = process.env['PROGRAMFILES'] || 'C:\\Program Files';
+    const pf86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
+    const local = process.env['LOCALAPPDATA'] || '';
+    candidates.push(
+      [`${pf}\\Google\\Chrome\\Application\\chrome.exe`, 'Google Chrome'],
+      [`${pf86}\\Google\\Chrome\\Application\\chrome.exe`, 'Google Chrome'],
+      [`${local}\\Google\\Chrome\\Application\\chrome.exe`, 'Google Chrome'],
+      [`${pf}\\Microsoft\\Edge\\Application\\msedge.exe`, 'Microsoft Edge'],
+      [`${pf86}\\Microsoft\\Edge\\Application\\msedge.exe`, 'Microsoft Edge'],
+      [`${pf}\\BraveSoftware\\Brave-Browser\\Application\\brave.exe`, 'Brave Browser'],
+      [`${local}\\BraveSoftware\\Brave-Browser\\Application\\brave.exe`, 'Brave Browser'],
+      [`${pf}\\Vivaldi\\Application\\vivaldi.exe`, 'Vivaldi'],
+      [`${local}\\Vivaldi\\Application\\vivaldi.exe`, 'Vivaldi'],
+    );
+  }
+
+  for (const [p, name] of candidates) {
+    if (fs.existsSync(p)) {
+      return { path: p, name };
+    }
+  }
+
+  return null;
+}
+
+async function cmdLaunch() {
+  // Check if a CDP browser is already running on 9222
+  try {
+    await getDebugTabs();
+    console.log('Browser already running on port 9222.');
+    return cmdConnect();
+  } catch {}
+
+  const browser = findBrowser();
+  if (!browser) {
+    console.error('No Chromium-based browser found.');
+    console.error('Install one of: Google Chrome, Microsoft Edge, Brave, Chromium, Arc, Vivaldi, Opera');
+    console.error('Or set CHROME_PATH to the browser executable.');
+    process.exit(1);
   }
 
   const userDataDir = '/tmp/cdp-chrome-profile';
 
-  const child = spawn(chromePath, [
+  const child = spawn(browser.path, [
     `--remote-debugging-port=9222`,
     `--user-data-dir=${userDataDir}`,
     '--no-first-run',
@@ -194,16 +248,16 @@ async function cmdLaunch() {
   });
   child.unref();
 
-  // Wait for Chrome to be ready
+  // Wait for browser to be ready
   for (let i = 0; i < 30; i++) {
     await new Promise(r => setTimeout(r, 500));
     try {
       await getDebugTabs();
-      console.log(`Chrome launched (PID: ${child.pid}) on port 9222.`);
+      console.log(`${browser.name} launched (PID: ${child.pid}) on port 9222.`);
       return cmdConnect();
     } catch {}
   }
-  console.error('Chrome launched but debug port not responding after 15s.');
+  console.error(`${browser.name} launched but debug port not responding after 15s.`);
   process.exit(1);
 }
 

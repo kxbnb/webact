@@ -1,6 +1,6 @@
 # chrome-cdp
 
-A Claude Code plugin that lets you control Chrome via the Chrome DevTools Protocol. Give the agent a goal — "check my inbox", "top stories on Hacker News", "search for flights" — and it drives the browser to get it done.
+A Claude Code plugin that lets you control any Chromium-based browser via the Chrome DevTools Protocol. Give the agent a goal — "check my inbox", "top stories on Hacker News", "search for flights" — and it drives the browser to get it done.
 
 No Playwright, no MCP, no browser automation frameworks. Raw CDP over WebSocket.
 
@@ -56,7 +56,7 @@ Each agent invocation gets its own **session** with isolated tab tracking. On `l
 The plugin includes `cdp.js`, a CLI wrapper around CDP:
 
 ```bash
-node cdp.js launch                  # Start Chrome, create session, get session ID
+node cdp.js launch                  # Start browser, create session, get session ID
 node cdp.js run <sessionId>         # Run command from /tmp/cdp-command-<sessionId>.json
 node cdp.js navigate <url>          # Go to a URL
 node cdp.js dom                     # Get compact DOM (~4000 chars)
@@ -77,9 +77,11 @@ The agent workflow: write command JSON to `/tmp/cdp-command-<sessionId>.json`, t
 
 ## Requirements
 
-- Google Chrome
+- Any Chromium-based browser: Google Chrome, Microsoft Edge, Brave, Arc, Vivaldi, Opera, or Chromium
 - Node.js
 - `ws` npm package (installed automatically)
+
+Auto-detected on macOS, Linux, and Windows. Set `CHROME_PATH` to override.
 
 ## License
 
