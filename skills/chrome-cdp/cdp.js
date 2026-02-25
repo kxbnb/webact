@@ -11,6 +11,62 @@ const crypto = require('crypto');
 // --- Temp directory (cross-platform) ---
 const TMP = os.tmpdir();
 
+// --- WSL detection ---
+// When running in WSL with Chrome on the Windows host, we need to:
+// 1. Find Chrome at /mnt/c/... paths
+// 2. Pass Windows-style paths for --user-data-dir
+// 3. Connect to the host IP instead of 127.0.0.1
+const IS_WSL = (() => {
+  try {
+    return fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft');
+  } catch { return false; }
+})();
+
+function getWSLHostIP() {
+  // Try multiple methods to find the Windows host IP from WSL
+  try {
+    // Method 1: WSL_HOST_IP env (newer WSL versions)
+    if (process.env.WSL_HOST_IP) return process.env.WSL_HOST_IP;
+    // Method 2: /etc/resolv.conf nameserver (standard WSL2)
+    const resolv = fs.readFileSync('/etc/resolv.conf', 'utf8');
+    const match = resolv.match(/nameserver\s+(\d+\.\d+\.\d+\.\d+)/);
+    if (match) return match[1];
+  } catch {}
+  return null;
+}
+
+// CDP host: in WSL2, localhost forwarding may or may not work.
+// We resolve this at connect time, not startup, so we can probe.
+let CDP_HOST = '127.0.0.1';
+
+async function resolveCDPHost() {
+  if (!IS_WSL) return;
+  // Try localhost first (Win11 22H2+ has localhost forwarding)
+  try {
+    await httpGet('http://127.0.0.1:9222/json/version');
+    return; // localhost works
+  } catch {}
+  // Fall back to host IP
+  const hostIP = getWSLHostIP();
+  if (hostIP) {
+    try {
+      await httpGet(`http://${hostIP}:9222/json/version`);
+      CDP_HOST = hostIP;
+      return;
+    } catch {}
+  }
+  // Neither worked — keep localhost, let it fail with a clear error later
+}
+
+function wslWindowsPath(linuxPath) {
+  // Convert a WSL/Linux path to a Windows path for passing to Windows executables
+  try {
+    return execSync(`wslpath -w "${linuxPath}"`, { encoding: 'utf8' }).trim();
+  } catch {
+    return linuxPath;
+  }
+}
+
 // --- Session state ---
 // Each agent session gets its own state file: <tmpdir>/cdp-state-<sessionId>.json
 // State tracks: { sessionId, activeTabId, tabs: [tabId, ...] }
@@ -47,7 +103,7 @@ function httpGet(url) {
 }
 
 async function getDebugTabs() {
-  const data = await httpGet('http://127.0.0.1:9222/json');
+  const data = await httpGet(`http://${CDP_HOST}:9222/json`);
   try {
     return JSON.parse(data);
   } catch (e) {
@@ -57,8 +113,8 @@ async function getDebugTabs() {
 
 async function createNewTab(url) {
   const endpoint = url
-    ? `http://127.0.0.1:9222/json/new?${url}`
-    : 'http://127.0.0.1:9222/json/new';
+    ? `http://${CDP_HOST}:9222/json/new?${url}`
+    : `http://${CDP_HOST}:9222/json/new`;
   const data = await httpGet(endpoint);
   try {
     return JSON.parse(data);
@@ -140,7 +196,12 @@ function createCDP(wsUrl) {
 
 async function withCDP(fn) {
   const tab = await connectToTab();
-  const cdp = await createCDP(tab.webSocketDebuggerUrl);
+  // Chrome returns ws://127.0.0.1:... but in WSL2 we need the host IP
+  let wsUrl = tab.webSocketDebuggerUrl;
+  if (IS_WSL && CDP_HOST !== '127.0.0.1') {
+    wsUrl = wsUrl.replace('127.0.0.1', CDP_HOST);
+  }
+  const cdp = await createCDP(wsUrl);
   try {
     return await fn(cdp);
   } finally {
@@ -216,6 +277,17 @@ function findBrowser() {
       [`${home}/.local/share/flatpak/exports/bin/com.brave.Browser`, 'Brave Browser (flatpak)'],
       ['/var/lib/flatpak/exports/bin/com.brave.Browser', 'Brave Browser (flatpak)'],
     );
+    // WSL: also check Windows host browsers via /mnt/c/
+    if (IS_WSL) {
+      candidates.push(
+        ['/mnt/c/Program Files/Google/Chrome/Application/chrome.exe', 'Google Chrome (Windows)'],
+        ['/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe', 'Google Chrome (Windows)'],
+        ['/mnt/c/Program Files/Microsoft/Edge/Application/msedge.exe', 'Microsoft Edge (Windows)'],
+        ['/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'Microsoft Edge (Windows)'],
+        ['/mnt/c/Program Files/BraveSoftware/Brave-Browser/Application/brave.exe', 'Brave Browser (Windows)'],
+        ['/mnt/c/Program Files/Vivaldi/Application/vivaldi.exe', 'Vivaldi (Windows)'],
+      );
+    }
   } else if (platform === 'win32') {
     const pf = process.env['PROGRAMFILES'] || 'C:\\Program Files';
     const pf86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
@@ -261,10 +333,14 @@ function findBrowser() {
 }
 
 async function cmdLaunch() {
+  // Resolve the right host for CDP connections (handles WSL2)
+  if (IS_WSL) await resolveCDPHost();
+
   // Check if a CDP browser is already running on 9222
   try {
     await getDebugTabs();
     console.log('Browser already running on port 9222.');
+    if (IS_WSL) console.log(`WSL: connecting to ${CDP_HOST}`);
     return cmdConnect();
   } catch {}
 
@@ -276,7 +352,13 @@ async function cmdLaunch() {
     process.exit(1);
   }
 
-  const userDataDir = path.join(TMP, 'cdp-chrome-profile');
+  let userDataDir = path.join(TMP, 'cdp-chrome-profile');
+  const isWindowsBrowser = IS_WSL && browser.path.startsWith('/mnt/');
+
+  // Windows browsers need Windows-style paths
+  if (isWindowsBrowser) {
+    userDataDir = wslWindowsPath(userDataDir);
+  }
 
   const spawnOpts = { stdio: 'ignore' };
   if (process.platform === 'win32') {
@@ -298,8 +380,10 @@ async function cmdLaunch() {
   for (let i = 0; i < 30; i++) {
     await new Promise(r => setTimeout(r, 500));
     try {
+      if (IS_WSL) await resolveCDPHost();
       await getDebugTabs();
       console.log(`${browser.name} launched (PID: ${child.pid}) on port 9222.`);
+      if (IS_WSL) console.log(`WSL: connecting to ${CDP_HOST}`);
       return cmdConnect();
     } catch {}
   }
@@ -600,7 +684,7 @@ async function cmdTab(id) {
   saveSessionState(state);
 
   // Activate the tab in Chrome
-  await httpGet(`http://127.0.0.1:9222/json/activate/${id}`);
+  await httpGet(`http://${CDP_HOST}:9222/json/activate/${id}`);
   console.log(`Switched to tab: ${tab.title || tab.url}`);
 }
 
@@ -618,7 +702,7 @@ async function cmdClose() {
   if (!state.activeTabId) { console.error('No active tab'); process.exit(1); }
 
   const tabId = state.activeTabId;
-  await httpGet(`http://127.0.0.1:9222/json/close/${tabId}`);
+  await httpGet(`http://${CDP_HOST}:9222/json/close/${tabId}`);
 
   // Remove from session
   state.tabs = (state.tabs || []).filter(id => id !== tabId);
