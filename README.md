@@ -91,15 +91,15 @@ Each agent invocation gets its own **session** with isolated tab tracking. On `l
 
 ## CDP helper
 
-The plugin includes `cdp.js`, a CLI wrapper around CDP:
+The skill includes `cdp.js`, a CLI wrapper around CDP:
 
 ```bash
 node cdp.js launch                  # Start browser, create session, get session ID
-node cdp.js run <sessionId>         # Run command from /tmp/cdp-command-<sessionId>.json
+node cdp.js run <sessionId>         # Run command from session command file
 node cdp.js navigate <url>          # Go to a URL
 node cdp.js dom                     # Get compact DOM (~4000 chars)
 node cdp.js dom <selector>          # Get DOM subtree
-node cdp.js screenshot              # Save screenshot to /tmp/cdp-screenshot-<session>.png
+node cdp.js screenshot              # Capture screenshot
 node cdp.js click <selector>        # Click an element
 node cdp.js type <selector> <text>  # Type into an input
 node cdp.js press <key>             # Press a key (Enter, Tab, Escape)
@@ -111,7 +111,7 @@ node cdp.js newtab [url]            # Open a new tab in this session
 node cdp.js close                   # Close current tab
 ```
 
-The agent workflow: write command JSON to `/tmp/cdp-command-<sessionId>.json`, then `node cdp.js run <sessionId>`.
+The agent workflow: `launch` prints a session ID and command file path. Write command JSON to that file, then `node cdp.js run <sessionId>`.
 
 ## Requirements
 
@@ -119,7 +119,7 @@ The agent workflow: write command JSON to `/tmp/cdp-command-<sessionId>.json`, t
 - Node.js
 - `ws` npm package (installed automatically)
 
-Auto-detected on macOS, Linux, and Windows. Set `CHROME_PATH` to override.
+Auto-detected on macOS, Linux, Windows, and WSL (finds the Windows host browser automatically). Set `CHROME_PATH` to override.
 
 ## License
 
