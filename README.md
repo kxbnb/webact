@@ -8,40 +8,54 @@ No Playwright, no MCP, no browser automation frameworks. Raw CDP over WebSocket.
 
 ### Claude Code
 
+From inside Claude Code:
 ```
 /plugin marketplace add kxbnb/chrome-cdp
 /plugin install chrome-cdp@chrome-cdp
 ```
 
-Then install the npm dependency (one-time):
+Or from the command line:
+```bash
+claude plugin marketplace add kxbnb/chrome-cdp
+claude plugin install chrome-cdp@chrome-cdp
+```
 
+Then install the npm dependency (one-time):
 ```bash
 cd ~/.claude/plugins/cache/chrome-cdp/chrome-cdp/*/skills/chrome-cdp && npm install
 ```
 
 ### OpenAI Codex
 
-Copy the skill to your Codex skills directory:
+From inside Codex:
+```
+/skills install https://github.com/kxbnb/chrome-cdp.git
+```
 
+Or from the command line:
+```bash
+codex skills install https://github.com/kxbnb/chrome-cdp.git
+```
+
+Or manually:
 ```bash
 git clone https://github.com/kxbnb/chrome-cdp.git
 cp -r chrome-cdp/skills/chrome-cdp ~/.codex/skills/chrome-cdp
 cd ~/.codex/skills/chrome-cdp && npm install
 ```
 
-Codex's sandbox blocks local networking by default. To allow CDP connections, add a rule to allow `node` access to `localhost:9222`, or run with `--full-auto` mode.
+> **Note:** Codex's sandbox blocks local networking by default. To allow CDP connections, add a rule to allow `node` access to `localhost:9222`, or run with `--full-auto` mode.
 
 ### Other agents (Cursor, Copilot, etc.)
 
 Drop the skill into your project:
-
 ```bash
-mkdir -p .agents/skills
-cp -r chrome-cdp/skills/chrome-cdp .agents/skills/chrome-cdp
+git clone https://github.com/kxbnb/chrome-cdp.git /tmp/chrome-cdp
+cp -r /tmp/chrome-cdp/skills/chrome-cdp .agents/skills/chrome-cdp
 cd .agents/skills/chrome-cdp && npm install
 ```
 
-Any tool supporting the [Agent Skills spec](https://agentskills.io) will auto-discover it.
+Any tool supporting the [Agent Skills spec](https://agentskills.io) will auto-discover it from `.agents/skills/`.
 
 ## Usage
 
