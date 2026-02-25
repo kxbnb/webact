@@ -5,15 +5,19 @@ const http = require('http');
 const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const crypto = require('crypto');
 
+// --- Temp directory (cross-platform) ---
+const TMP = os.tmpdir();
+
 // --- Session state ---
-// Each agent session gets its own state file: /tmp/cdp-state-<sessionId>.json
+// Each agent session gets its own state file: <tmpdir>/cdp-state-<sessionId>.json
 // State tracks: { sessionId, activeTabId, tabs: [tabId, ...] }
 let currentSessionId = null;
 
 function sessionStateFile() {
-  return `/tmp/cdp-state-${currentSessionId}.json`;
+  return path.join(TMP, `cdp-state-${currentSessionId}.json`);
 }
 
 function loadSessionState() {
@@ -235,17 +239,22 @@ async function cmdLaunch() {
     process.exit(1);
   }
 
-  const userDataDir = '/tmp/cdp-chrome-profile';
+  const userDataDir = path.join(TMP, 'cdp-chrome-profile');
+
+  const spawnOpts = { stdio: 'ignore' };
+  if (process.platform === 'win32') {
+    spawnOpts.detached = false;
+    spawnOpts.shell = true;
+  } else {
+    spawnOpts.detached = true;
+  }
 
   const child = spawn(browser.path, [
     `--remote-debugging-port=9222`,
     `--user-data-dir=${userDataDir}`,
     '--no-first-run',
     '--no-default-browser-check',
-  ], {
-    detached: true,
-    stdio: 'ignore',
-  });
+  ], spawnOpts);
   child.unref();
 
   // Wait for browser to be ready
@@ -274,8 +283,9 @@ async function cmdConnect() {
   };
   saveSessionState(state);
 
+  const cmdFile = path.join(TMP, `cdp-command-${currentSessionId}.json`);
   console.log(`Session: ${currentSessionId}`);
-  console.log(`Command file: /tmp/cdp-command-${currentSessionId}.json`);
+  console.log(`Command file: ${cmdFile}`);
   console.log(`New tab created: [${newTab.id}] ${newTab.url}`);
 }
 
@@ -392,7 +402,7 @@ async function cmdDom(selector, full) {
 async function cmdScreenshot() {
   await withCDP(async (cdp) => {
     const result = await cdp.send('Page.captureScreenshot', { format: 'png' });
-    const outPath = `/tmp/cdp-screenshot-${currentSessionId || 'default'}.png`;
+    const outPath = path.join(TMP, `cdp-screenshot-${currentSessionId || 'default'}.png`);
     fs.writeFileSync(outPath, Buffer.from(result.data, 'base64'));
     console.log(`Screenshot saved to ${outPath}`);
   });
@@ -627,14 +637,14 @@ async function main() {
 
   if (!command) {
     console.log(`Usage: cdp.js <command> [args]
-       cdp.js run <sessionId>  (reads from /tmp/cdp-command-<sessionId>.json)
+       cdp.js run <sessionId>  (reads from ${TMP}${path.sep}cdp-command-<sessionId>.json)
 
 Commands:
   launch              Launch Chrome with remote debugging
   connect             Connect to Chrome and start a new session
   navigate <url>      Navigate to URL
   dom [selector]      Get compact DOM (--full for no truncation)
-  screenshot          Capture screenshot to /tmp/cdp-screenshot-<session>.png
+  screenshot          Capture screenshot
   click <selector>    Click an element
   type <sel> <text>   Type text into element
   press <key>         Press a key (Enter, Tab, Escape, etc.)
@@ -644,7 +654,7 @@ Commands:
   tab <id>            Switch to a session-owned tab
   newtab [url]        Open a new tab in this session
   close               Close current tab
-  run <sessionId>     Read command from /tmp/cdp-command-<sessionId>.json`);
+  run <sessionId>     Read command from session command file`);
     process.exit(0);
   }
 
@@ -656,7 +666,7 @@ Commands:
         process.exit(1);
       }
       currentSessionId = sessionId;
-      const cmdFile = `/tmp/cdp-command-${sessionId}.json`;
+      const cmdFile = path.join(TMP, `cdp-command-${sessionId}.json`);
       let cmdData;
       try {
         cmdData = JSON.parse(fs.readFileSync(cmdFile, 'utf8'));

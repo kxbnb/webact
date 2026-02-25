@@ -17,15 +17,15 @@ All commands use `cdp.js` from this skill's base directory. The base directory i
    ```bash
    node <base-dir>/cdp.js launch
    ```
-2. **Capture the session ID** from the output. It prints `Session: <id>` and `Command file: /tmp/cdp-command-<id>.json`. Save the session ID — you'll use it for all subsequent commands.
+2. **Capture the session ID and command file path** from the output. It prints `Session: <id>` and `Command file: <path>`. Save both — you'll use them for all subsequent commands.
 
 ### Running Commands (repeats)
 
 For all commands after launch, use two steps:
 
-1. **Write** the command to the session's command file using the Write tool:
+1. **Write** the command to the session's command file (the path printed by launch) using the Write tool:
    ```
-   Write to /tmp/cdp-command-<sessionId>.json:
+   Write to <command-file-path>:
    {"command": "navigate", "args": ["https://example.com"]}
    ```
 
@@ -133,7 +133,7 @@ digraph perceive_act {
 # Launch Chrome and get a session ID
 node <base-dir>/cdp.js launch
 # Output includes: Session: a1b2c3d4
-#                  Command file: /tmp/cdp-command-a1b2c3d4.json
+#                  Command file: /tmp/cdp-command-a1b2c3d4.json  (path varies by OS)
 ```
 
 If Chrome is not running with debugging enabled, `launch` will start a new instance. If already running on port 9222, it connects to the existing instance.
@@ -172,7 +172,7 @@ If a CSS selector doesn't work, use `eval` to find elements by text content:
 
 ## Common Patterns
 
-All examples below assume you've already launched and have a session ID. For each command: write the JSON to `/tmp/cdp-command-<sessionId>.json`, then `node <base-dir>/cdp.js run <sessionId>`.
+All examples below assume you've already launched and have a session ID. For each command: write the JSON to the command file path (printed by launch), then `node <base-dir>/cdp.js run <sessionId>`.
 
 **Navigate and read:**
 ```json
