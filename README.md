@@ -1,12 +1,12 @@
 # chrome-cdp
 
-A Claude Code plugin that lets you control any Chromium-based browser via the Chrome DevTools Protocol. Give the agent a goal — "check my inbox", "top stories on Hacker News", "search for flights" — and it drives the browser to get it done.
+An agent skill that lets you control any Chromium-based browser via the Chrome DevTools Protocol. Works with Claude Code, OpenAI Codex, and any tool supporting the [Agent Skills](https://agentskills.io) spec. Give the agent a goal — "check my inbox", "top stories on Hacker News", "search for flights" — and it drives the browser to get it done.
 
 No Playwright, no MCP, no browser automation frameworks. Raw CDP over WebSocket.
 
 ## Install
 
-Add the marketplace and install the plugin:
+### Claude Code
 
 ```
 /plugin marketplace add kxbnb/chrome-cdp
@@ -19,14 +19,38 @@ Then install the npm dependency (one-time):
 cd ~/.claude/plugins/cache/chrome-cdp/chrome-cdp/*/skills/chrome-cdp && npm install
 ```
 
+### OpenAI Codex
+
+Copy the skill to your Codex skills directory:
+
+```bash
+git clone https://github.com/kxbnb/chrome-cdp.git
+cp -r chrome-cdp/skills/chrome-cdp ~/.codex/skills/chrome-cdp
+cd ~/.codex/skills/chrome-cdp && npm install
+```
+
+Codex's sandbox blocks local networking by default. To allow CDP connections, add a rule to allow `node` access to `localhost:9222`, or run with `--full-auto` mode.
+
+### Other agents (Cursor, Copilot, etc.)
+
+Drop the skill into your project:
+
+```bash
+mkdir -p .agents/skills
+cp -r chrome-cdp/skills/chrome-cdp .agents/skills/chrome-cdp
+cd .agents/skills/chrome-cdp && npm install
+```
+
+Any tool supporting the [Agent Skills spec](https://agentskills.io) will auto-discover it.
+
 ## Usage
 
-Just tell Claude what you want:
+Just tell your agent what you want:
 
 ```
-/chrome-cdp check the top stories on Hacker News
-/chrome-cdp navigate to github.com and show my notifications
-/chrome-cdp search google for "best restaurants near me"
+check the top stories on Hacker News
+navigate to github.com and show my notifications
+search google for "best restaurants near me"
 ```
 
 Or describe any goal — the agent will figure out the steps.

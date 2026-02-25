@@ -1,7 +1,7 @@
 {
   "name": "chrome-cdp",
   "description": "Control Chrome via raw CDP - browse the web, interact with pages, accomplish goals through a perceive-act loop",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "author": {
     "name": "kxbnb"
   },
