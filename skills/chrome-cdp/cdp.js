@@ -186,16 +186,35 @@ function findBrowser() {
     }
   } else if (platform === 'linux') {
     candidates.push(
+      // Chrome
       ['/usr/bin/google-chrome-stable', 'Google Chrome'],
       ['/usr/bin/google-chrome', 'Google Chrome'],
+      ['/usr/local/bin/google-chrome-stable', 'Google Chrome'],
+      ['/usr/local/bin/google-chrome', 'Google Chrome'],
+      // Edge
       ['/usr/bin/microsoft-edge-stable', 'Microsoft Edge'],
       ['/usr/bin/microsoft-edge', 'Microsoft Edge'],
+      // Brave
       ['/usr/bin/brave-browser', 'Brave Browser'],
+      ['/usr/bin/brave-browser-stable', 'Brave Browser'],
+      // Vivaldi
       ['/usr/bin/vivaldi-stable', 'Vivaldi'],
+      ['/usr/bin/vivaldi', 'Vivaldi'],
+      // Opera
       ['/usr/bin/opera', 'Opera'],
+      // Chromium
       ['/usr/bin/chromium-browser', 'Chromium'],
       ['/usr/bin/chromium', 'Chromium'],
+      ['/usr/local/bin/chromium-browser', 'Chromium'],
+      ['/usr/local/bin/chromium', 'Chromium'],
       ['/snap/bin/chromium', 'Chromium (snap)'],
+      // Flatpak (common runtime paths)
+      [`${home}/.local/share/flatpak/exports/bin/com.google.Chrome`, 'Google Chrome (flatpak)'],
+      ['/var/lib/flatpak/exports/bin/com.google.Chrome', 'Google Chrome (flatpak)'],
+      [`${home}/.local/share/flatpak/exports/bin/org.chromium.Chromium`, 'Chromium (flatpak)'],
+      ['/var/lib/flatpak/exports/bin/org.chromium.Chromium', 'Chromium (flatpak)'],
+      [`${home}/.local/share/flatpak/exports/bin/com.brave.Browser`, 'Brave Browser (flatpak)'],
+      ['/var/lib/flatpak/exports/bin/com.brave.Browser', 'Brave Browser (flatpak)'],
     );
   } else if (platform === 'win32') {
     const pf = process.env['PROGRAMFILES'] || 'C:\\Program Files';
@@ -217,6 +236,24 @@ function findBrowser() {
   for (const [p, name] of candidates) {
     if (fs.existsSync(p)) {
       return { path: p, name };
+    }
+  }
+
+  // Fallback: try to find a browser on PATH (Linux/macOS)
+  if (platform !== 'win32') {
+    const pathNames = [
+      ['google-chrome-stable', 'Google Chrome'],
+      ['google-chrome', 'Google Chrome'],
+      ['chromium-browser', 'Chromium'],
+      ['chromium', 'Chromium'],
+      ['microsoft-edge-stable', 'Microsoft Edge'],
+      ['brave-browser', 'Brave Browser'],
+    ];
+    for (const [bin, name] of pathNames) {
+      try {
+        const resolved = execSync(`which ${bin} 2>/dev/null`, { encoding: 'utf8' }).trim();
+        if (resolved) return { path: resolved, name };
+      } catch {}
     }
   }
 
