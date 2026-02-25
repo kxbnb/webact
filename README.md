@@ -43,25 +43,37 @@ The agent follows a **perceive-act loop**:
 
 DOM is read first for token efficiency. Screenshots are a fallback for visual-heavy pages.
 
+## Sessions
+
+Each agent invocation gets its own **session** with isolated tab tracking. On `launch`, a unique session ID is generated and a fresh Chrome tab is created for that session.
+
+- Multiple agents can work side by side in the same Chrome instance
+- Each session only sees and controls its own tabs
+- Commands are passed via a JSON file, so the bash command stays the same throughout a session (only needs one user approval)
+
 ## CDP helper
 
 The plugin includes `cdp.js`, a CLI wrapper around CDP:
 
 ```bash
-node cdp.js launch                  # Start Chrome with remote debugging
+node cdp.js launch                  # Start Chrome, create session, get session ID
+node cdp.js run <sessionId>         # Run command from /tmp/cdp-command-<sessionId>.json
 node cdp.js navigate <url>          # Go to a URL
 node cdp.js dom                     # Get compact DOM (~4000 chars)
 node cdp.js dom <selector>          # Get DOM subtree
-node cdp.js screenshot              # Save screenshot to /tmp/cdp-screenshot.png
+node cdp.js screenshot              # Save screenshot to /tmp/cdp-screenshot-<session>.png
 node cdp.js click <selector>        # Click an element
 node cdp.js type <selector> <text>  # Type into an input
 node cdp.js press <key>             # Press a key (Enter, Tab, Escape)
 node cdp.js scroll <up|down>        # Scroll the page
 node cdp.js eval <js>               # Run JavaScript in page context
-node cdp.js tabs                    # List open tabs
-node cdp.js tab <id>                # Switch tab
+node cdp.js tabs                    # List this session's tabs
+node cdp.js tab <id>                # Switch to a session-owned tab
+node cdp.js newtab [url]            # Open a new tab in this session
 node cdp.js close                   # Close current tab
 ```
+
+The agent workflow: write command JSON to `/tmp/cdp-command-<sessionId>.json`, then `node cdp.js run <sessionId>`.
 
 ## Requirements
 

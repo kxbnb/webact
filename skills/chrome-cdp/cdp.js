@@ -5,63 +5,87 @@ const http = require('http');
 const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
-// --- State ---
-const STATE_FILE = '/tmp/cdp-state.json';
+// --- Session state ---
+// Each agent session gets its own state file: /tmp/cdp-state-<sessionId>.json
+// State tracks: { sessionId, activeTabId, tabs: [tabId, ...] }
+let currentSessionId = null;
 
-function loadState() {
+function sessionStateFile() {
+  return `/tmp/cdp-state-${currentSessionId}.json`;
+}
+
+function loadSessionState() {
+  if (!currentSessionId) return { tabs: [] };
   try {
-    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    return JSON.parse(fs.readFileSync(sessionStateFile(), 'utf8'));
   } catch {
-    return {};
+    return { sessionId: currentSessionId, activeTabId: null, tabs: [] };
   }
 }
 
-function saveState(state) {
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+function saveSessionState(state) {
+  if (!currentSessionId) return;
+  fs.writeFileSync(sessionStateFile(), JSON.stringify(state, null, 2));
 }
 
 // --- CDP Connection ---
 
-function getDebugUrl() {
+function httpGet(url) {
   return new Promise((resolve, reject) => {
-    http.get('http://127.0.0.1:9222/json', (res) => {
+    http.get(url, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const tabs = JSON.parse(data);
-          resolve(tabs);
-        } catch (e) {
-          reject(new Error('Failed to parse Chrome debug info'));
-        }
-      });
-    }).on('error', (e) => {
-      reject(new Error('Cannot connect to Chrome on port 9222. Is Chrome running with --remote-debugging-port=9222?'));
-    });
+      res.on('end', () => resolve(data));
+    }).on('error', reject);
   });
 }
 
-async function connectToTab(tabId) {
-  const tabs = await getDebugUrl();
+async function getDebugTabs() {
+  const data = await httpGet('http://127.0.0.1:9222/json');
+  try {
+    return JSON.parse(data);
+  } catch (e) {
+    throw new Error('Failed to parse Chrome debug info');
+  }
+}
+
+async function createNewTab(url) {
+  const endpoint = url
+    ? `http://127.0.0.1:9222/json/new?${url}`
+    : 'http://127.0.0.1:9222/json/new';
+  const data = await httpGet(endpoint);
+  try {
+    return JSON.parse(data);
+  } catch (e) {
+    throw new Error('Failed to create new tab');
+  }
+}
+
+async function connectToTab() {
+  const state = loadSessionState();
+  const tabs = await getDebugTabs();
+
   let tab;
-  if (tabId) {
-    tab = tabs.find(t => t.id === tabId);
-    if (!tab) throw new Error(`Tab ${tabId} not found`);
-  } else {
-    // Use saved tab or first page tab
-    const state = loadState();
-    if (state.tabId) {
-      tab = tabs.find(t => t.id === state.tabId);
-    }
+  if (state.activeTabId) {
+    tab = tabs.find(t => t.id === state.activeTabId);
     if (!tab) {
-      tab = tabs.find(t => t.type === 'page') || tabs[0];
+      // Active tab gone — try another session-owned tab
+      for (const ownedId of state.tabs) {
+        tab = tabs.find(t => t.id === ownedId);
+        if (tab) break;
+      }
     }
   }
+
   if (!tab || !tab.webSocketDebuggerUrl) {
-    throw new Error('No debuggable tab found');
+    throw new Error('No active tab for this session. Navigate to a URL first.');
   }
-  saveState({ ...loadState(), tabId: tab.id });
+
+  // Update active tab
+  state.activeTabId = tab.id;
+  saveSessionState(state);
   return tab;
 }
 
@@ -110,8 +134,8 @@ function createCDP(wsUrl) {
   });
 }
 
-async function withCDP(tabId, fn) {
-  const tab = await connectToTab(tabId);
+async function withCDP(fn) {
+  const tab = await connectToTab();
   const cdp = await createCDP(tab.webSocketDebuggerUrl);
   try {
     return await fn(cdp);
@@ -125,7 +149,7 @@ async function withCDP(tabId, fn) {
 async function cmdLaunch() {
   // Check if Chrome is already running on 9222
   try {
-    await getDebugUrl();
+    await getDebugTabs();
     console.log('Chrome already running on port 9222.');
     return cmdConnect();
   } catch {}
@@ -174,7 +198,7 @@ async function cmdLaunch() {
   for (let i = 0; i < 30; i++) {
     await new Promise(r => setTimeout(r, 500));
     try {
-      await getDebugUrl();
+      await getDebugTabs();
       console.log(`Chrome launched (PID: ${child.pid}) on port 9222.`);
       return cmdConnect();
     } catch {}
@@ -184,22 +208,28 @@ async function cmdLaunch() {
 }
 
 async function cmdConnect() {
-  const tabs = await getDebugUrl();
-  const pages = tabs.filter(t => t.type === 'page');
-  console.log(`Connected. ${pages.length} tab(s):`);
-  for (const t of pages) {
-    console.log(`  [${t.id}] ${t.title || '(untitled)'} - ${t.url}`);
-  }
-  if (pages.length > 0) {
-    saveState({ ...loadState(), tabId: pages[0].id });
-  }
+  // Generate a new session ID
+  currentSessionId = crypto.randomBytes(4).toString('hex');
+
+  // Create a fresh tab for this session
+  const newTab = await createNewTab();
+  const state = {
+    sessionId: currentSessionId,
+    activeTabId: newTab.id,
+    tabs: [newTab.id],
+  };
+  saveSessionState(state);
+
+  console.log(`Session: ${currentSessionId}`);
+  console.log(`Command file: /tmp/cdp-command-${currentSessionId}.json`);
+  console.log(`New tab created: [${newTab.id}] ${newTab.url}`);
 }
 
 async function cmdNavigate(url) {
   if (!url) { console.error('Usage: cdp.js navigate <url>'); process.exit(1); }
   if (!url.startsWith('http')) url = 'https://' + url;
 
-  await withCDP(null, async (cdp) => {
+  await withCDP(async (cdp) => {
     await cdp.send('Page.enable');
     await cdp.send('Page.navigate', { url });
 
@@ -292,7 +322,7 @@ async function cmdDom(selector, full) {
     })()
   `;
 
-  await withCDP(null, async (cdp) => {
+  await withCDP(async (cdp) => {
     const result = await cdp.send('Runtime.evaluate', {
       expression: extractScript,
       returnByValue: true,
@@ -306,9 +336,9 @@ async function cmdDom(selector, full) {
 }
 
 async function cmdScreenshot() {
-  await withCDP(null, async (cdp) => {
+  await withCDP(async (cdp) => {
     const result = await cdp.send('Page.captureScreenshot', { format: 'png' });
-    const outPath = '/tmp/cdp-screenshot.png';
+    const outPath = `/tmp/cdp-screenshot-${currentSessionId || 'default'}.png`;
     fs.writeFileSync(outPath, Buffer.from(result.data, 'base64'));
     console.log(`Screenshot saved to ${outPath}`);
   });
@@ -317,7 +347,7 @@ async function cmdScreenshot() {
 async function cmdClick(selector) {
   if (!selector) { console.error('Usage: cdp.js click <selector>'); process.exit(1); }
 
-  await withCDP(null, async (cdp) => {
+  await withCDP(async (cdp) => {
     // Find element center and click
     const result = await cdp.send('Runtime.evaluate', {
       expression: `
@@ -350,7 +380,7 @@ async function cmdClick(selector) {
 async function cmdType(selector, text) {
   if (!selector || !text) { console.error('Usage: cdp.js type <selector> <text>'); process.exit(1); }
 
-  await withCDP(null, async (cdp) => {
+  await withCDP(async (cdp) => {
     // Focus the element
     await cdp.send('Runtime.evaluate', {
       expression: `
@@ -395,7 +425,7 @@ async function cmdPress(key) {
 
   const mapped = keyMap[key.toLowerCase()] || { key, code: `Key${key.toUpperCase()}`, keyCode: key.charCodeAt(0) };
 
-  await withCDP(null, async (cdp) => {
+  await withCDP(async (cdp) => {
     await cdp.send('Input.dispatchKeyEvent', {
       type: 'keyDown', ...mapped, windowsVirtualKeyCode: mapped.keyCode, nativeVirtualKeyCode: mapped.keyCode,
     });
@@ -410,7 +440,7 @@ async function cmdScroll(direction) {
   if (!direction) { console.error('Usage: cdp.js scroll <up|down>'); process.exit(1); }
   const deltaY = direction.toLowerCase() === 'up' ? -400 : 400;
 
-  await withCDP(null, async (cdp) => {
+  await withCDP(async (cdp) => {
     await cdp.send('Input.dispatchMouseEvent', {
       type: 'mouseWheel', x: 200, y: 200, deltaX: 0, deltaY,
     });
@@ -421,7 +451,7 @@ async function cmdScroll(direction) {
 async function cmdEval(expression) {
   if (!expression) { console.error('Usage: cdp.js eval <js-expression>'); process.exit(1); }
 
-  await withCDP(null, async (cdp) => {
+  await withCDP(async (cdp) => {
     const result = await cdp.send('Runtime.evaluate', {
       expression,
       returnByValue: true,
@@ -440,46 +470,100 @@ async function cmdEval(expression) {
 }
 
 async function cmdTabs() {
-  const tabs = await getDebugUrl();
-  const pages = tabs.filter(t => t.type === 'page');
-  const state = loadState();
-  for (const t of pages) {
-    const active = t.id === state.tabId ? ' *' : '';
+  const allTabs = await getDebugTabs();
+  const state = loadSessionState();
+  const ownedIds = new Set(state.tabs || []);
+  const owned = allTabs.filter(t => ownedIds.has(t.id));
+  if (owned.length === 0) {
+    console.log('No tabs owned by this session.');
+    return;
+  }
+  for (const t of owned) {
+    const active = t.id === state.activeTabId ? ' *' : '';
     console.log(`[${t.id}] ${t.title || '(untitled)'} - ${t.url}${active}`);
   }
 }
 
 async function cmdTab(id) {
   if (!id) { console.error('Usage: cdp.js tab <id>'); process.exit(1); }
-  const tabs = await getDebugUrl();
-  const tab = tabs.find(t => t.id === id);
-  if (!tab) { console.error(`Tab ${id} not found`); process.exit(1); }
-  saveState({ ...loadState(), tabId: id });
+  const state = loadSessionState();
+  if (!(state.tabs || []).includes(id)) {
+    console.error(`Tab ${id} is not owned by this session.`);
+    process.exit(1);
+  }
+  const allTabs = await getDebugTabs();
+  const tab = allTabs.find(t => t.id === id);
+  if (!tab) { console.error(`Tab ${id} not found in Chrome`); process.exit(1); }
 
-  // Activate the tab
-  await new Promise((resolve, reject) => {
-    http.get(`http://127.0.0.1:9222/json/activate/${id}`, (res) => {
-      res.on('data', () => {});
-      res.on('end', resolve);
-    }).on('error', reject);
-  });
+  state.activeTabId = id;
+  saveSessionState(state);
 
+  // Activate the tab in Chrome
+  await httpGet(`http://127.0.0.1:9222/json/activate/${id}`);
   console.log(`Switched to tab: ${tab.title || tab.url}`);
 }
 
+async function cmdNewTab(url) {
+  const newTab = await createNewTab(url);
+  const state = loadSessionState();
+  state.tabs.push(newTab.id);
+  state.activeTabId = newTab.id;
+  saveSessionState(state);
+  console.log(`New tab: [${newTab.id}] ${newTab.url}`);
+}
+
 async function cmdClose() {
-  const state = loadState();
-  if (!state.tabId) { console.error('No active tab'); process.exit(1); }
+  const state = loadSessionState();
+  if (!state.activeTabId) { console.error('No active tab'); process.exit(1); }
 
-  await new Promise((resolve, reject) => {
-    http.get(`http://127.0.0.1:9222/json/close/${state.tabId}`, (res) => {
-      res.on('data', () => {});
-      res.on('end', resolve);
-    }).on('error', reject);
-  });
+  const tabId = state.activeTabId;
+  await httpGet(`http://127.0.0.1:9222/json/close/${tabId}`);
 
-  console.log(`Closed tab ${state.tabId}`);
-  saveState({ ...loadState(), tabId: null });
+  // Remove from session
+  state.tabs = (state.tabs || []).filter(id => id !== tabId);
+  state.activeTabId = state.tabs.length > 0 ? state.tabs[state.tabs.length - 1] : null;
+  saveSessionState(state);
+
+  console.log(`Closed tab ${tabId}`);
+  if (state.activeTabId) {
+    console.log(`Active tab is now: ${state.activeTabId}`);
+  } else {
+    console.log('No tabs remaining in this session.');
+  }
+}
+
+// --- Command dispatch ---
+
+async function dispatch(command, args) {
+  switch (command) {
+    case 'launch': await cmdLaunch(); break;
+    case 'connect': await cmdConnect(); break;
+    case 'navigate': await cmdNavigate(args.join(' ')); break;
+    case 'dom': {
+      const full = args.includes('--full');
+      const selector = args.filter(a => a !== '--full').join(' ') || null;
+      await cmdDom(selector, full);
+      break;
+    }
+    case 'screenshot': await cmdScreenshot(); break;
+    case 'click': await cmdClick(args.join(' ')); break;
+    case 'type': {
+      const selector = args[0];
+      const text = args.slice(1).join(' ');
+      await cmdType(selector, text);
+      break;
+    }
+    case 'press': await cmdPress(args[0]); break;
+    case 'scroll': await cmdScroll(args[0]); break;
+    case 'eval': await cmdEval(args.join(' ')); break;
+    case 'tabs': await cmdTabs(); break;
+    case 'tab': await cmdTab(args[0]); break;
+    case 'newtab': await cmdNewTab(args.join(' ') || undefined); break;
+    case 'close': await cmdClose(); break;
+    default:
+      console.error(`Unknown command: ${command}`);
+      process.exit(1);
+  }
 }
 
 // --- CLI ---
@@ -489,52 +573,52 @@ async function main() {
 
   if (!command) {
     console.log(`Usage: cdp.js <command> [args]
+       cdp.js run <sessionId>  (reads from /tmp/cdp-command-<sessionId>.json)
 
 Commands:
   launch              Launch Chrome with remote debugging
-  connect             Connect to running Chrome
+  connect             Connect to Chrome and start a new session
   navigate <url>      Navigate to URL
   dom [selector]      Get compact DOM (--full for no truncation)
-  screenshot          Capture screenshot to /tmp/cdp-screenshot.png
+  screenshot          Capture screenshot to /tmp/cdp-screenshot-<session>.png
   click <selector>    Click an element
   type <sel> <text>   Type text into element
   press <key>         Press a key (Enter, Tab, Escape, etc.)
   scroll <up|down>    Scroll the page
   eval <js>           Evaluate JavaScript
-  tabs                List open tabs
-  tab <id>            Switch to tab
-  close               Close current tab`);
+  tabs                List this session's tabs
+  tab <id>            Switch to a session-owned tab
+  newtab [url]        Open a new tab in this session
+  close               Close current tab
+  run <sessionId>     Read command from /tmp/cdp-command-<sessionId>.json`);
     process.exit(0);
   }
 
   try {
-    switch (command) {
-      case 'launch': await cmdLaunch(); break;
-      case 'connect': await cmdConnect(); break;
-      case 'navigate': await cmdNavigate(args.join(' ')); break;
-      case 'dom': {
-        const full = args.includes('--full');
-        const selector = args.filter(a => a !== '--full').join(' ') || null;
-        await cmdDom(selector, full);
-        break;
-      }
-      case 'screenshot': await cmdScreenshot(); break;
-      case 'click': await cmdClick(args.join(' ')); break;
-      case 'type': {
-        const selector = args[0];
-        const text = args.slice(1).join(' ');
-        await cmdType(selector, text);
-        break;
-      }
-      case 'press': await cmdPress(args[0]); break;
-      case 'scroll': await cmdScroll(args[0]); break;
-      case 'eval': await cmdEval(args.join(' ')); break;
-      case 'tabs': await cmdTabs(); break;
-      case 'tab': await cmdTab(args[0]); break;
-      case 'close': await cmdClose(); break;
-      default:
-        console.error(`Unknown command: ${command}`);
+    if (command === 'run') {
+      const sessionId = args[0];
+      if (!sessionId) {
+        console.error('Usage: cdp.js run <sessionId>');
         process.exit(1);
+      }
+      currentSessionId = sessionId;
+      const cmdFile = `/tmp/cdp-command-${sessionId}.json`;
+      let cmdData;
+      try {
+        cmdData = JSON.parse(fs.readFileSync(cmdFile, 'utf8'));
+      } catch (e) {
+        console.error(`Cannot read ${cmdFile}: ${e.message}`);
+        process.exit(1);
+      }
+      const fileCmd = cmdData.command;
+      const fileArgs = cmdData.args || [];
+      if (!fileCmd) {
+        console.error(`${cmdFile} missing "command" field`);
+        process.exit(1);
+      }
+      await dispatch(fileCmd, fileArgs);
+    } else {
+      await dispatch(command, args);
     }
   } catch (e) {
     console.error(`Error: ${e.message}`);

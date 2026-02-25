@@ -7,26 +7,65 @@ description: Use when the user asks to interact with a website, browse the web, 
 
 Control Chrome directly via the Chrome DevTools Protocol. No Playwright, no MCP — raw CDP through a CLI helper.
 
-## Quick Reference
+## How to Run Commands
 
-All commands use `cdp.js` from this skill's base directory. The base directory is provided when the skill loads — use it as the path prefix. Example: `node <base-dir>/cdp.js <command>`
+All commands use `cdp.js` from this skill's base directory. The base directory is provided when the skill loads — use it as the path prefix.
 
-| Command | Purpose |
-|---------|---------|
-| `node cdp.js launch` | Launch Chrome with debugging (or connect if running) |
-| `node cdp.js navigate <url>` | Go to URL, wait for load |
-| `node cdp.js dom` | Get compact DOM (~4000 chars) |
-| `node cdp.js dom <selector>` | Get DOM subtree |
-| `node cdp.js dom --full` | Get full DOM (no truncation) |
-| `node cdp.js screenshot` | Save screenshot to /tmp/cdp-screenshot.png |
-| `node cdp.js click <selector>` | Click element |
-| `node cdp.js type <selector> <text>` | Type into input |
-| `node cdp.js press <key>` | Press key (Enter, Tab, Escape, etc.) |
-| `node cdp.js scroll <up\|down>` | Scroll page |
-| `node cdp.js eval <js>` | Run JavaScript in page |
-| `node cdp.js tabs` | List open tabs |
-| `node cdp.js tab <id>` | Switch tab |
-| `node cdp.js close` | Close current tab |
+### Session Setup (once per session)
+
+1. **Launch Chrome** using a direct CLI command:
+   ```bash
+   node <base-dir>/cdp.js launch
+   ```
+2. **Capture the session ID** from the output. It prints `Session: <id>` and `Command file: /tmp/cdp-command-<id>.json`. Save the session ID — you'll use it for all subsequent commands.
+
+### Running Commands (repeats)
+
+For all commands after launch, use two steps:
+
+1. **Write** the command to the session's command file using the Write tool:
+   ```
+   Write to /tmp/cdp-command-<sessionId>.json:
+   {"command": "navigate", "args": ["https://example.com"]}
+   ```
+
+2. **Execute** with a fixed bash command (same every time for this session):
+   ```bash
+   node <base-dir>/cdp.js run <sessionId>
+   ```
+
+Because the bash command is identical every invocation, the user only approves it once.
+
+### Command Reference
+
+| Command | args | Example JSON |
+|---------|------|-------------|
+| `navigate` | `["<url>"]` | `{"command": "navigate", "args": ["https://example.com"]}` |
+| `dom` | `[]` or `["<selector>"]` or `["--full"]` | `{"command": "dom", "args": []}` |
+| `screenshot` | none | `{"command": "screenshot", "args": []}` |
+| `click` | `["<selector>"]` | `{"command": "click", "args": ["button.submit"]}` |
+| `type` | `["<selector>", "<text>"]` | `{"command": "type", "args": ["input[name=q]", "search query"]}` |
+| `press` | `["<key>"]` | `{"command": "press", "args": ["Enter"]}` |
+| `scroll` | `["up"]` or `["down"]` | `{"command": "scroll", "args": ["down"]}` |
+| `eval` | `["<js>"]` | `{"command": "eval", "args": ["document.title"]}` |
+| `tabs` | none | `{"command": "tabs", "args": []}` |
+| `tab` | `["<id>"]` | `{"command": "tab", "args": ["ABC123"]}` |
+| `newtab` | `[]` or `["<url>"]` | `{"command": "newtab", "args": ["https://example.com"]}` |
+| `close` | none | `{"command": "close", "args": []}` |
+
+**Important:** The `args` array maps directly to command-line arguments. For `type`, the first arg is the selector and the second is the text. For `eval`, pass the entire expression as a single string in `args[0]`.
+
+### Tab Isolation
+
+Each session creates and owns its own tabs. Sessions never reuse tabs from other sessions or pre-existing tabs.
+
+- `launch`/`connect` creates a **new blank tab** for the session
+- `newtab` opens an additional tab within the session
+- `tabs` only lists tabs owned by the current session
+- `tab <id>` only switches to session-owned tabs
+- `close` removes the tab from the session
+
+This means two agents can work side by side in the same Chrome instance without interfering with each other.
 
 ## The Perceive-Act Loop
 
@@ -56,9 +95,9 @@ digraph perceive_act {
 
 1. **PLAN** — Break the user's goal into high-level steps. Think about what site to visit, what actions to take, what information to extract.
 
-2. **ACT** — Run the next cdp.js command (navigate, click, type, etc.)
+2. **ACT** — Write the command JSON, then run `node <base-dir>/cdp.js run <sessionId>`.
 
-3. **PERCEIVE** — Run `node cdp.js dom` to read the page. This is mandatory after every action. Never chain actions without perceiving.
+3. **PERCEIVE** — Write `{"command": "dom", "args": []}` and run. This is mandatory after every action. Never chain actions without perceiving.
 
 4. **DECIDE** — Based on the DOM:
    - Expected state? Proceed to next action.
@@ -88,15 +127,14 @@ digraph perceive_act {
 
 ## Getting Started
 
-```bash
-# First time: launch Chrome
-node <base-dir>/cdp.js launch
-
-# If user already has Chrome open with debugging:
-node <base-dir>/cdp.js connect
-```
-
 **Important:** Before first use, install dependencies: `cd <base-dir> && npm install`
+
+```bash
+# Launch Chrome and get a session ID
+node <base-dir>/cdp.js launch
+# Output includes: Session: a1b2c3d4
+#                  Command file: /tmp/cdp-command-a1b2c3d4.json
+```
 
 If Chrome is not running with debugging enabled, `launch` will start a new instance. If already running on port 9222, it connects to the existing instance.
 
@@ -125,36 +163,46 @@ Read the DOM output and identify elements by:
 3. **aria-label**: `[aria-label="Search"]`
 4. **class**: `.nav-link`
 5. **structural**: `form input[type="email"]`
-6. **text-based** (via eval): `node cdp.js eval "document.querySelector('button').textContent"`
+6. **text-based** (via eval): use eval with `document.querySelector('button').textContent`
 
 If a CSS selector doesn't work, use `eval` to find elements by text content:
-```bash
-node cdp.js eval "
-  [...document.querySelectorAll('a')]
-    .find(a => a.textContent.includes('Sign in'))
-    ?.getAttribute('href')
-"
+```json
+{"command": "eval", "args": ["[...document.querySelectorAll('a')].find(a => a.textContent.includes('Sign in'))?.getAttribute('href')"]}
 ```
 
 ## Common Patterns
 
+All examples below assume you've already launched and have a session ID. For each command: write the JSON to `/tmp/cdp-command-<sessionId>.json`, then `node <base-dir>/cdp.js run <sessionId>`.
+
 **Navigate and read:**
-```bash
-node cdp.js navigate https://news.ycombinator.com
-node cdp.js dom
+```json
+{"command": "navigate", "args": ["https://news.ycombinator.com"]}
+```
+```json
+{"command": "dom", "args": []}
 ```
 
 **Fill a form:**
-```bash
-node cdp.js click input[name="q"]
-node cdp.js type input[name="q"] "search query"
-node cdp.js press Enter
-node cdp.js dom
+```json
+{"command": "click", "args": ["input[name=q]"]}
+```
+```json
+{"command": "type", "args": ["input[name=q]", "search query"]}
+```
+```json
+{"command": "press", "args": ["Enter"]}
+```
+```json
+{"command": "dom", "args": []}
 ```
 
 **Handle dynamic content:**
-```bash
-node cdp.js click .load-more-btn
-node cdp.js eval "document.querySelectorAll('.item').length"  # Wait for items
-node cdp.js dom .results-container
+```json
+{"command": "click", "args": [".load-more-btn"]}
+```
+```json
+{"command": "eval", "args": ["document.querySelectorAll('.item').length"]}
+```
+```json
+{"command": "dom", "args": [".results-container"]}
 ```
