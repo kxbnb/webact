@@ -1,8 +1,11 @@
 {
   "name": "chrome-cdp",
-  "description": "Chrome DevTools Protocol browser control for Claude Code",
   "owner": {
     "name": "kxbnb"
+  },
+  "metadata": {
+    "description": "Chrome DevTools Protocol browser control for Claude Code",
+    "version": "1.4.1"
   },
   "plugins": [
     {
