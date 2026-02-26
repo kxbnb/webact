@@ -44,7 +44,7 @@ cp -r chrome-cdp/skills/chrome-cdp ~/.codex/skills/chrome-cdp
 cd ~/.codex/skills/chrome-cdp && npm install
 ```
 
-> **Note:** Codex's sandbox blocks local networking by default. To allow CDP connections, add a rule to allow `node` access to `localhost:9222`, or run with `--full-auto` mode.
+> **Note:** Codex's sandbox blocks local networking by default. To allow CDP connections, add a rule to allow `node` access to `localhost` on the CDP port (auto-discovered at launch), or run with `--full-auto` mode.
 
 ### Other agents (Cursor, Copilot, etc.)
 

@@ -5,11 +5,26 @@ const http = require('http');
 const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const net = require('net');
 const os = require('os');
 const crypto = require('crypto');
 
 // --- Temp directory (cross-platform) ---
 const TMP = os.tmpdir();
+
+// --- CDP port (resolved at runtime) ---
+let CDP_PORT = 9222;
+
+function findFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.listen(0, '127.0.0.1', () => {
+      const port = srv.address().port;
+      srv.close(() => resolve(port));
+    });
+    srv.on('error', reject);
+  });
+}
 
 // --- WSL detection ---
 // When running in WSL with Chrome on the Windows host, we need to:
@@ -43,14 +58,14 @@ async function resolveCDPHost() {
   if (!IS_WSL) return;
   // Try localhost first (Win11 22H2+ has localhost forwarding)
   try {
-    await httpGet('http://127.0.0.1:9222/json/version');
+    await httpGet(`http://127.0.0.1:${CDP_PORT}/json/version`);
     return; // localhost works
   } catch {}
   // Fall back to host IP
   const hostIP = getWSLHostIP();
   if (hostIP) {
     try {
-      await httpGet(`http://${hostIP}:9222/json/version`);
+      await httpGet(`http://${hostIP}:${CDP_PORT}/json/version`);
       CDP_HOST = hostIP;
       return;
     } catch {}
@@ -103,7 +118,7 @@ function httpGet(url) {
 }
 
 async function getDebugTabs() {
-  const data = await httpGet(`http://${CDP_HOST}:9222/json`);
+  const data = await httpGet(`http://${CDP_HOST}:${CDP_PORT}/json`);
   try {
     return JSON.parse(data);
   } catch (e) {
@@ -113,8 +128,8 @@ async function getDebugTabs() {
 
 async function createNewTab(url) {
   const endpoint = url
-    ? `http://${CDP_HOST}:9222/json/new?${url}`
-    : `http://${CDP_HOST}:9222/json/new`;
+    ? `http://${CDP_HOST}:${CDP_PORT}/json/new?${url}`
+    : `http://${CDP_HOST}:${CDP_PORT}/json/new`;
   const data = await httpGet(endpoint);
   try {
     return JSON.parse(data);
@@ -333,13 +348,20 @@ function findBrowser() {
 }
 
 async function cmdLaunch() {
+  // Determine port: env override or find a free one
+  if (process.env.CDP_PORT) {
+    CDP_PORT = parseInt(process.env.CDP_PORT, 10);
+  } else {
+    CDP_PORT = await findFreePort();
+  }
+
   // Resolve the right host for CDP connections (handles WSL2)
   if (IS_WSL) await resolveCDPHost();
 
-  // Check if a CDP browser is already running on 9222
+  // Check if a CDP browser is already running on this port
   try {
     await getDebugTabs();
-    console.log('Browser already running on port 9222.');
+    console.log(`Browser already running on port ${CDP_PORT}.`);
     if (IS_WSL) console.log(`WSL: connecting to ${CDP_HOST}`);
     return cmdConnect();
   } catch {}
@@ -369,7 +391,7 @@ async function cmdLaunch() {
   }
 
   const child = spawn(browser.path, [
-    `--remote-debugging-port=9222`,
+    `--remote-debugging-port=${CDP_PORT}`,
     `--user-data-dir=${userDataDir}`,
     '--no-first-run',
     '--no-default-browser-check',
@@ -382,7 +404,7 @@ async function cmdLaunch() {
     try {
       if (IS_WSL) await resolveCDPHost();
       await getDebugTabs();
-      console.log(`${browser.name} launched (PID: ${child.pid}) on port 9222.`);
+      console.log(`${browser.name} launched (PID: ${child.pid}) on port ${CDP_PORT}.`);
       if (IS_WSL) console.log(`WSL: connecting to ${CDP_HOST}`);
       return cmdConnect();
     } catch {}
@@ -401,11 +423,14 @@ async function cmdConnect() {
     sessionId: currentSessionId,
     activeTabId: newTab.id,
     tabs: [newTab.id],
+    port: CDP_PORT,
+    host: CDP_HOST,
   };
   saveSessionState(state);
 
   const cmdFile = path.join(TMP, `cdp-command-${currentSessionId}.json`);
   console.log(`Session: ${currentSessionId}`);
+  console.log(`Port: ${CDP_PORT}`);
   console.log(`Command file: ${cmdFile}`);
   console.log(`New tab created: [${newTab.id}] ${newTab.url}`);
 }
@@ -684,7 +709,7 @@ async function cmdTab(id) {
   saveSessionState(state);
 
   // Activate the tab in Chrome
-  await httpGet(`http://${CDP_HOST}:9222/json/activate/${id}`);
+  await httpGet(`http://${CDP_HOST}:${CDP_PORT}/json/activate/${id}`);
   console.log(`Switched to tab: ${tab.title || tab.url}`);
 }
 
@@ -702,7 +727,7 @@ async function cmdClose() {
   if (!state.activeTabId) { console.error('No active tab'); process.exit(1); }
 
   const tabId = state.activeTabId;
-  await httpGet(`http://${CDP_HOST}:9222/json/close/${tabId}`);
+  await httpGet(`http://${CDP_HOST}:${CDP_PORT}/json/close/${tabId}`);
 
   // Remove from session
   state.tabs = (state.tabs || []).filter(id => id !== tabId);
@@ -780,6 +805,11 @@ Commands:
   }
 
   try {
+    // Set port from env for standalone commands (non-launch, non-run)
+    if (process.env.CDP_PORT) {
+      CDP_PORT = parseInt(process.env.CDP_PORT, 10);
+    }
+
     if (command === 'run') {
       const sessionId = args[0];
       if (!sessionId) {
@@ -787,6 +817,12 @@ Commands:
         process.exit(1);
       }
       currentSessionId = sessionId;
+
+      // Restore port and host from session state
+      const state = loadSessionState();
+      if (state.port) CDP_PORT = state.port;
+      if (state.host) CDP_HOST = state.host;
+
       const cmdFile = path.join(TMP, `cdp-command-${sessionId}.json`);
       let cmdData;
       try {

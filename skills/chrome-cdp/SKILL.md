@@ -133,14 +133,22 @@ digraph perceive_act {
 # Launch Chrome and get a session ID
 node <base-dir>/cdp.js launch
 # Output includes: Session: a1b2c3d4
+#                  Port: 52431
 #                  Command file: /tmp/cdp-command-a1b2c3d4.json  (path varies by OS)
 ```
 
-If Chrome is not running with debugging enabled, `launch` will start a new instance. If already running on port 9222, it connects to the existing instance.
+If Chrome is not running with debugging enabled, `launch` will start a new instance on an automatically discovered free port. The port is printed in the output and saved in the session state — all subsequent `run` commands use it automatically.
 
-The user can also start Chrome manually:
+To force a specific port, set `CDP_PORT`:
+```bash
+CDP_PORT=9222 node <base-dir>/cdp.js launch
+```
+
+The user can also start Chrome manually and specify the port:
 ```bash
 /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
+# Then launch with:
+CDP_PORT=9222 node <base-dir>/cdp.js launch
 ```
 
 ## Token Efficiency

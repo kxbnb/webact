@@ -16,4 +16,4 @@ cd .agents/skills/chrome-cdp && npm install
 
 ## Sandbox Note
 
-The CDP tool connects to Chrome's debug port on `localhost:9222`. If your agent sandbox blocks local network access, you'll need to allow connections to `127.0.0.1:9222`.
+The CDP tool launches Chrome on an automatically discovered free port. The port is printed in the launch output and saved in the session state. If your agent sandbox blocks local network access, you'll need to allow connections to `127.0.0.1` on the assigned port.
