@@ -21,9 +21,10 @@ esac
 
 NEW="${MAJOR}.${MINOR}.${PATCH}"
 
-# Update both files
+# Update all version files
 sed -i '' "s/\"version\": *\"$CURRENT\"/\"version\": \"$NEW\"/g" \
   "$DIR/.claude-plugin/plugin.json" \
-  "$DIR/.claude-plugin/marketplace.json"
+  "$DIR/.claude-plugin/marketplace.json" \
+  "$DIR/skills/chrome-cdp/package.json"
 
 echo "$CURRENT -> $NEW"

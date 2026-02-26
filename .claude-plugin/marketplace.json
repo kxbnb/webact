@@ -8,8 +8,11 @@
     {
       "name": "chrome-cdp",
       "description": "Control Chrome via raw CDP - browse the web, interact with pages, accomplish goals through a perceive-act loop",
-      "version": "1.3.0",
-      "source": "./"
+      "version": "1.4.1",
+      "source": {
+        "source": "github",
+        "repo": "kxbnb/chrome-cdp"
+      }
     }
   ]
 }
