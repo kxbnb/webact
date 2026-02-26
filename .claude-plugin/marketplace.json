@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Chrome DevTools Protocol browser control for Claude Code",
-    "version": "1.4.1"
+    "version": "1.4.2"
   },
   "plugins": [
     {
       "name": "chrome-cdp",
       "description": "Control Chrome via raw CDP - browse the web, interact with pages, accomplish goals through a perceive-act loop",
-      "version": "1.4.1",
+      "version": "1.4.2",
       "source": {
         "source": "github",
         "repo": "kxbnb/chrome-cdp"

@@ -117,6 +117,24 @@ function httpGet(url) {
   });
 }
 
+function httpPut(url) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const req = http.request({
+      hostname: parsed.hostname,
+      port: parsed.port,
+      path: parsed.pathname + parsed.search,
+      method: 'PUT',
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve(data));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 async function getDebugTabs() {
   const data = await httpGet(`http://${CDP_HOST}:${CDP_PORT}/json`);
   try {
@@ -130,7 +148,7 @@ async function createNewTab(url) {
   const endpoint = url
     ? `http://${CDP_HOST}:${CDP_PORT}/json/new?${url}`
     : `http://${CDP_HOST}:${CDP_PORT}/json/new`;
-  const data = await httpGet(endpoint);
+  const data = await httpPut(endpoint);
   try {
     return JSON.parse(data);
   } catch (e) {
@@ -709,7 +727,7 @@ async function cmdTab(id) {
   saveSessionState(state);
 
   // Activate the tab in Chrome
-  await httpGet(`http://${CDP_HOST}:${CDP_PORT}/json/activate/${id}`);
+  await httpPut(`http://${CDP_HOST}:${CDP_PORT}/json/activate/${id}`);
   console.log(`Switched to tab: ${tab.title || tab.url}`);
 }
 
@@ -727,7 +745,7 @@ async function cmdClose() {
   if (!state.activeTabId) { console.error('No active tab'); process.exit(1); }
 
   const tabId = state.activeTabId;
-  await httpGet(`http://${CDP_HOST}:${CDP_PORT}/json/close/${tabId}`);
+  await httpPut(`http://${CDP_HOST}:${CDP_PORT}/json/close/${tabId}`);
 
   // Remove from session
   state.tabs = (state.tabs || []).filter(id => id !== tabId);
