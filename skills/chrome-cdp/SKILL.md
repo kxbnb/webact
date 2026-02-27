@@ -11,74 +11,60 @@ Control Chrome directly via the Chrome DevTools Protocol. No Playwright, no MCP 
 
 All commands use `cdp.js` from this skill's base directory. The base directory is provided when the skill loads — use it as the path prefix.
 
-### Session Setup (once per session)
+### Session Setup (once)
 
-1. **Launch Chrome** using a direct CLI command:
-   ```bash
-   node <base-dir>/cdp.js launch
-   ```
-2. **Capture the session ID and command file path** from the output. It prints `Session: <id>` and `Command file: <path>`. Save both — you'll use them for all subsequent commands.
-
-### Running Commands (repeats)
-
-For all commands after launch, write the command JSON to the command file and run:
-
-```
-Write to <command-file-path>:
-{"command": "navigate", "args": ["https://example.com"]}
-```
 ```bash
-node <base-dir>/cdp.js run <sessionId>
+node <base-dir>/cdp.js launch
 ```
 
-The bash command is identical every invocation — the user only approves it once.
+This launches Chrome (or connects to an existing instance) and creates a session. All subsequent commands auto-discover the session — no session ID needed.
 
-**Command chaining:** Write an array to batch multiple commands in one call:
-```
-Write to <command-file-path>:
-[
-  {"command": "click", "args": ["input[name=q]"]},
-  {"command": "keyboard", "args": ["search query"]},
-  {"command": "press", "args": ["Enter"]}
-]
+### Running Commands
+
+Use direct CLI commands. Each is a single bash call:
+
+```bash
+node <base-dir>/cdp.js navigate https://example.com
+node <base-dir>/cdp.js click button.submit
+node <base-dir>/cdp.js keyboard "hello world"
+node <base-dir>/cdp.js press Enter
+node <base-dir>/cdp.js dom
 ```
 
-**Auto-brief:** State-changing commands (navigate, click, hover, press Enter/Tab, scroll, select) automatically print a compact page summary. You usually don't need a separate `dom` call — the brief shows the URL, title, interactive elements, and links. Use `dom` only when you need the full page structure.
+**Auto-brief:** State-changing commands (navigate, click, hover, press Enter/Tab, scroll, select, waitfor) auto-print a compact page summary showing URL, title, inputs, buttons, and links. You usually don't need a separate `dom` call. Use `dom` only when you need the full page structure or a specific selector's subtree.
 
 ### Command Reference
 
-| Command | args | Example JSON |
-|---------|------|-------------|
-| `navigate` | `["<url>"]` | `{"command": "navigate", "args": ["https://example.com"]}` |
-| `dom` | `[]` or `["<selector>"]` or `["--full"]` | `{"command": "dom", "args": []}` |
-| `screenshot` | none | `{"command": "screenshot", "args": []}` |
-| `click` | `["<selector>"]` | `{"command": "click", "args": ["button.submit"]}` |
-| `doubleclick` | `["<selector>"]` | `{"command": "doubleclick", "args": ["td.cell"]}` |
-| `hover` | `["<selector>"]` | `{"command": "hover", "args": [".menu-trigger"]}` |
-| `focus` | `["<selector>"]` | `{"command": "focus", "args": ["input[name=q]"]}` |
-| `type` | `["<selector>", "<text>"]` | `{"command": "type", "args": ["input[name=q]", "search query"]}` |
-| `keyboard` | `["<text>"]` | `{"command": "keyboard", "args": ["hello world"]}` |
-| `select` | `["<selector>", "<value>"]` | `{"command": "select", "args": ["select#country", "US"]}` |
-| `upload` | `["<selector>", "<path>"]` | `{"command": "upload", "args": ["input[type=file]", "/tmp/photo.png"]}` |
-| `drag` | `["<from>", "<to>"]` | `{"command": "drag", "args": [".card:first-child", ".dropzone"]}` |
-| `dialog` | `["accept"]` or `["dismiss"]` or `["accept", "<text>"]` | `{"command": "dialog", "args": ["accept"]}` |
-| `waitfor` | `["<selector>"]` or `["<selector>", "<ms>"]` | `{"command": "waitfor", "args": [".dropdown", "5000"]}` |
-| `waitfornav` | `[]` or `["<ms>"]` | `{"command": "waitfornav", "args": ["5000"]}` |
-| `press` | `["<key>"]` | `{"command": "press", "args": ["Enter"]}` |
-| `scroll` | `["up"]` or `["down"]` | `{"command": "scroll", "args": ["down"]}` |
-| `eval` | `["<js>"]` | `{"command": "eval", "args": ["document.title"]}` |
-| `tabs` | none | `{"command": "tabs", "args": []}` |
-| `tab` | `["<id>"]` | `{"command": "tab", "args": ["ABC123"]}` |
-| `newtab` | `[]` or `["<url>"]` | `{"command": "newtab", "args": ["https://example.com"]}` |
-| `close` | none | `{"command": "close", "args": []}` |
+| Command | Example |
+|---------|---------|
+| `navigate <url>` | `node cdp.js navigate https://example.com` |
+| `dom [selector] [--full]` | `node cdp.js dom` or `node cdp.js dom .results` |
+| `screenshot` | `node cdp.js screenshot` |
+| `click <selector>` | `node cdp.js click button.submit` |
+| `doubleclick <selector>` | `node cdp.js doubleclick td.cell` |
+| `hover <selector>` | `node cdp.js hover .menu-trigger` |
+| `focus <selector>` | `node cdp.js focus input[name=q]` |
+| `type <selector> <text>` | `node cdp.js type input[name=q] search query` |
+| `keyboard <text>` | `node cdp.js keyboard hello world` |
+| `select <selector> <value>` | `node cdp.js select select#country US` |
+| `upload <selector> <file>` | `node cdp.js upload input[type=file] /tmp/photo.png` |
+| `drag <from> <to>` | `node cdp.js drag .card .dropzone` |
+| `dialog <accept\|dismiss> [text]` | `node cdp.js dialog accept` |
+| `waitfor <selector> [ms]` | `node cdp.js waitfor .dropdown 5000` |
+| `waitfornav [ms]` | `node cdp.js waitfornav` |
+| `press <key>` | `node cdp.js press Enter` |
+| `scroll <up\|down>` | `node cdp.js scroll down` |
+| `eval <js>` | `node cdp.js eval document.title` |
+| `tabs` | `node cdp.js tabs` |
+| `tab <id>` | `node cdp.js tab ABC123` |
+| `newtab [url]` | `node cdp.js newtab https://example.com` |
+| `close` | `node cdp.js close` |
 
-**Important:** The `args` array maps directly to command-line arguments. For `type`, the first arg is the selector and the second is the text. For `eval`, pass the entire expression as a single string in `args[0]`.
+**`type` vs `keyboard`:** Use `type` to focus a specific input and fill it. Use `keyboard` to type at the current caret position — essential for rich text editors (Slack, Google Docs, Notion) where `type`'s focus call resets the cursor.
 
-**`type` vs `keyboard`:** Use `type` when you need to focus a specific input and fill it. Use `keyboard` when you need to type at the current caret position — essential for rich text editors (Slack, Google Docs, Notion) where re-focusing the container resets the cursor. A typical flow for @mentions: `click` the editor, `keyboard` to type `@name`, `waitfor` the autocomplete dropdown, then `click` the match.
+**`click` behavior:** Waits up to 5s for the element, scrolls it into view, then clicks. No manual waits needed for dynamic elements.
 
-**`click` behavior:** `click` automatically waits up to 5s for the element to appear and scrolls it into view before clicking. No need to add manual waits before clicking dynamically-rendered elements like autocomplete dropdowns.
-
-**`waitfor` behavior:** Blocks until the selector matches an element in the DOM, then prints its tag and text content. Exits with an error if the timeout expires (default 5000ms).
+**`dialog` behavior:** Sets a one-shot auto-handler. Run BEFORE the action that triggers the dialog.
 
 ### Tab Isolation
 
@@ -133,19 +119,7 @@ node <base-dir>/cdp.js launch
 #         Command file: /tmp/cdp-command-a1b2c3d4.json  (path varies by OS)
 ```
 
-If Chrome is not running with debugging enabled, `launch` will start a new instance automatically. Connection details are saved in the session state — all subsequent `run` commands use them automatically.
-
-To force a specific port, set `CDP_PORT`:
-```bash
-CDP_PORT=9222 node <base-dir>/cdp.js launch
-```
-
-The user can also start Chrome manually and specify the port:
-```bash
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
-# Then launch with:
-CDP_PORT=9222 node <base-dir>/cdp.js launch
-```
+If Chrome is not running, `launch` starts a new instance automatically. All subsequent commands auto-discover the session.
 
 ## Token Efficiency
 
@@ -170,63 +144,31 @@ Read the DOM output and identify elements by:
 6. **text-based** (via eval): use eval with `document.querySelector('button').textContent`
 
 If a CSS selector doesn't work, use `eval` to find elements by text content:
-```json
-{"command": "eval", "args": ["[...document.querySelectorAll('a')].find(a => a.textContent.includes('Sign in'))?.getAttribute('href')"]}
+```bash
+node cdp.js eval "[...document.querySelectorAll('a')].find(a => a.textContent.includes('Sign in'))?.getAttribute('href')"
 ```
 
 ## Common Patterns
 
-All examples below assume you've already launched and have a session ID. For each command: write the JSON to the command file path (printed by launch), then `node <base-dir>/cdp.js run <sessionId>`.
+All examples assume you've already run `node cdp.js launch`.
 
-**Navigate and read:**
-```json
-{"command": "navigate", "args": ["https://news.ycombinator.com"]}
-```
-```json
-{"command": "dom", "args": []}
+**Navigate and read** (navigate auto-prints brief — no separate dom needed):
+```bash
+node cdp.js navigate https://news.ycombinator.com
 ```
 
 **Fill a form:**
-```json
-{"command": "click", "args": ["input[name=q]"]}
-```
-```json
-{"command": "type", "args": ["input[name=q]", "search query"]}
-```
-```json
-{"command": "press", "args": ["Enter"]}
-```
-```json
-{"command": "dom", "args": []}
-```
-
-**Handle dynamic content:**
-```json
-{"command": "click", "args": [".load-more-btn"]}
-```
-```json
-{"command": "eval", "args": ["document.querySelectorAll('.item').length"]}
-```
-```json
-{"command": "dom", "args": [".results-container"]}
+```bash
+node cdp.js click input[name=q]
+node cdp.js type input[name=q] search query
+node cdp.js press Enter
 ```
 
 **Rich text editors and @mentions:**
-```json
-{"command": "click", "args": [".ql-editor"]}
-```
-```json
-{"command": "keyboard", "args": ["Hello "]}
-```
-```json
-{"command": "keyboard", "args": ["@alice"]}
-```
-```json
-{"command": "waitfor", "args": ["[data-qa='tab_complete_ui_item']", "5000"]}
-```
-```json
-{"command": "click", "args": ["[data-qa='tab_complete_ui_item']"]}
-```
-```json
-{"command": "keyboard", "args": [" check this out"]}
+```bash
+node cdp.js click .ql-editor
+node cdp.js keyboard Hello @alice
+node cdp.js waitfor [data-qa='tab_complete_ui_item'] 5000
+node cdp.js click [data-qa='tab_complete_ui_item']
+node cdp.js keyboard " check this out"
 ```

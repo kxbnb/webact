@@ -87,6 +87,8 @@ function wslWindowsPath(linuxPath) {
 // State tracks: { sessionId, activeTabId, tabs: [tabId, ...] }
 let currentSessionId = null;
 
+const LAST_SESSION_FILE = path.join(TMP, 'cdp-last-session');
+
 function sessionStateFile() {
   return path.join(TMP, `cdp-state-${currentSessionId}.json`);
 }
@@ -532,9 +534,10 @@ async function cmdConnect() {
   };
   saveSessionState(state);
 
-  const cmdFile = path.join(TMP, `cdp-command-${currentSessionId}.json`);
+  // Save as last active session for auto-discovery
+  fs.writeFileSync(LAST_SESSION_FILE, currentSessionId);
+
   console.log(`Session: ${currentSessionId}`);
-  console.log(`Command file: ${cmdFile}`);
 }
 
 async function cmdNavigate(url) {
@@ -1177,11 +1180,9 @@ async function main() {
 
   if (!command) {
     console.log(`Usage: cdp.js <command> [args]
-       cdp.js run <sessionId>  (reads from ${TMP}${path.sep}cdp-command-<sessionId>.json)
 
 Commands:
-  launch              Launch Chrome with remote debugging
-  connect             Connect to Chrome and start a new session
+  launch              Launch Chrome and start a session
   navigate <url>      Navigate to URL
   dom [selector]      Get compact DOM (--full for no truncation)
   screenshot          Capture screenshot
@@ -1203,8 +1204,7 @@ Commands:
   tabs                List this session's tabs
   tab <id>            Switch to a session-owned tab
   newtab [url]        Open a new tab in this session
-  close               Close current tab
-  run <sessionId>     Read command from session command file`);
+  close               Close current tab`);
     process.exit(0);
   }
 
@@ -1227,24 +1227,41 @@ Commands:
       if (state.port) CDP_PORT = state.port;
       if (state.host) CDP_HOST = state.host;
 
-      const cmdFile = path.join(TMP, `cdp-command-${sessionId}.json`);
-      let cmdData;
-      try {
-        cmdData = JSON.parse(fs.readFileSync(cmdFile, 'utf8'));
-      } catch (e) {
-        console.error(`Cannot read ${cmdFile}: ${e.message}`);
-        process.exit(1);
-      }
-
-      // Support command chaining: array of commands or single command
-      const commands = Array.isArray(cmdData) ? cmdData : [cmdData];
-      for (const cmd of commands) {
-        if (!cmd.command) {
-          console.error(`Missing "command" field in: ${JSON.stringify(cmd)}`);
+      // Inline command: node cdp.js run <sid> navigate https://example.com
+      if (args.length > 1) {
+        await dispatch(args[1], args.slice(2));
+      } else {
+        // File-based command (supports chaining via arrays)
+        const cmdFile = path.join(TMP, `cdp-command-${sessionId}.json`);
+        let cmdData;
+        try {
+          cmdData = JSON.parse(fs.readFileSync(cmdFile, 'utf8'));
+        } catch (e) {
+          console.error(`Cannot read ${cmdFile}: ${e.message}`);
           process.exit(1);
         }
-        await dispatch(cmd.command, cmd.args || []);
+        const commands = Array.isArray(cmdData) ? cmdData : [cmdData];
+        for (const cmd of commands) {
+          if (!cmd.command) {
+            console.error(`Missing "command" field in: ${JSON.stringify(cmd)}`);
+            process.exit(1);
+          }
+          await dispatch(cmd.command, cmd.args || []);
+        }
       }
+    } else if (command !== 'launch' && command !== 'connect') {
+      // Direct command: auto-discover last session
+      try {
+        const lastSid = fs.readFileSync(LAST_SESSION_FILE, 'utf8').trim();
+        currentSessionId = lastSid;
+        const state = loadSessionState();
+        if (state.port) CDP_PORT = state.port;
+        if (state.host) CDP_HOST = state.host;
+      } catch {
+        console.error('No active session. Run: node cdp.js launch');
+        process.exit(1);
+      }
+      await dispatch(command, args);
     } else {
       await dispatch(command, args);
     }
