@@ -187,6 +187,7 @@ function createCDP(wsUrl) {
     const ws = new WebSocket(wsUrl);
     let msgId = 1;
     const pending = new Map();
+    const eventHandlers = new Map();
 
     ws.on('open', () => {
       const cdp = {
@@ -196,6 +197,9 @@ function createCDP(wsUrl) {
             pending.set(id, { resolve: res, reject: rej });
             ws.send(JSON.stringify({ id, method, params }));
           });
+        },
+        on(event, handler) {
+          eventHandlers.set(event, handler);
         },
         close() {
           ws.close();
@@ -214,6 +218,8 @@ function createCDP(wsUrl) {
         } else {
           resolve(msg.result);
         }
+      } else if (msg.method && eventHandlers.has(msg.method)) {
+        eventHandlers.get(msg.method)(msg.params);
       }
     });
 
@@ -236,6 +242,21 @@ async function withCDP(fn) {
   }
   const cdp = await createCDP(wsUrl);
   try {
+    // If a dialog handler is pending, activate it
+    const state = loadSessionState();
+    if (state.dialogHandler) {
+      const { accept, promptText } = state.dialogHandler;
+      await cdp.send('Page.enable');
+      cdp.on('Page.javascriptDialogOpening', async (params) => {
+        try {
+          await cdp.send('Page.handleJavaScriptDialog', { accept, promptText });
+          console.log(`Auto-${accept ? 'accepted' : 'dismissed'} ${params.type} dialog: "${params.message}"`);
+        } catch {}
+      });
+      // Clear the handler after attaching (one-shot)
+      delete state.dialogHandler;
+      saveSessionState(state);
+    }
     return await fn(cdp);
   } finally {
     cdp.close();
@@ -590,12 +611,93 @@ async function cmdScreenshot() {
   });
 }
 
+// Shared helper: wait for element, scroll into view, return coordinates
+async function locateElement(cdp, selector) {
+  const result = await cdp.send('Runtime.evaluate', {
+    expression: `
+      (async function() {
+        const sel = ${JSON.stringify(selector)};
+        let el;
+        for (let i = 0; i < 50; i++) {
+          el = document.querySelector(sel);
+          if (el) break;
+          await new Promise(r => setTimeout(r, 100));
+        }
+        if (!el) return { error: 'Element not found after 5s: ' + sel };
+        el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+        await new Promise(r => setTimeout(r, 50));
+        const rect = el.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
+                 tag: el.tagName, text: (el.textContent || '').substring(0, 50).trim() };
+      })()
+    `,
+    returnByValue: true,
+    awaitPromise: true,
+  });
+  const loc = result.result.value;
+  if (loc.error) { console.error(loc.error); process.exit(1); }
+  return loc;
+}
+
 async function cmdClick(selector) {
   if (!selector) { console.error('Usage: cdp.js click <selector>'); process.exit(1); }
 
   await withCDP(async (cdp) => {
-    // Wait for element to appear (up to 5s), scroll into view, then click
-    const waitResult = await cdp.send('Runtime.evaluate', {
+    const loc = await locateElement(cdp, selector);
+
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed', x: loc.x, y: loc.y, button: 'left', clickCount: 1
+    });
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x: loc.x, y: loc.y, button: 'left', clickCount: 1
+    });
+
+    console.log(`Clicked <${loc.tag.toLowerCase()}> "${loc.text}" at (${Math.round(loc.x)}, ${Math.round(loc.y)})`);
+  });
+}
+
+async function cmdDoubleClick(selector) {
+  if (!selector) { console.error('Usage: cdp.js doubleclick <selector>'); process.exit(1); }
+
+  await withCDP(async (cdp) => {
+    const loc = await locateElement(cdp, selector);
+
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed', x: loc.x, y: loc.y, button: 'left', clickCount: 1
+    });
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x: loc.x, y: loc.y, button: 'left', clickCount: 1
+    });
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed', x: loc.x, y: loc.y, button: 'left', clickCount: 2
+    });
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x: loc.x, y: loc.y, button: 'left', clickCount: 2
+    });
+
+    console.log(`Double-clicked <${loc.tag.toLowerCase()}> "${loc.text}" at (${Math.round(loc.x)}, ${Math.round(loc.y)})`);
+  });
+}
+
+async function cmdHover(selector) {
+  if (!selector) { console.error('Usage: cdp.js hover <selector>'); process.exit(1); }
+
+  await withCDP(async (cdp) => {
+    const loc = await locateElement(cdp, selector);
+
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved', x: loc.x, y: loc.y,
+    });
+
+    console.log(`Hovered <${loc.tag.toLowerCase()}> "${loc.text}" at (${Math.round(loc.x)}, ${Math.round(loc.y)})`);
+  });
+}
+
+async function cmdFocus(selector) {
+  if (!selector) { console.error('Usage: cdp.js focus <selector>'); process.exit(1); }
+
+  await withCDP(async (cdp) => {
+    const result = await cdp.send('Runtime.evaluate', {
       expression: `
         (async function() {
           const sel = ${JSON.stringify(selector)};
@@ -606,28 +708,111 @@ async function cmdClick(selector) {
             await new Promise(r => setTimeout(r, 100));
           }
           if (!el) return { error: 'Element not found after 5s: ' + sel };
-          el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
-          await new Promise(r => setTimeout(r, 50));
-          const rect = el.getBoundingClientRect();
-          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
-                   tag: el.tagName, text: (el.textContent || '').substring(0, 50).trim() };
+          el.focus();
+          return { tag: el.tagName, text: (el.textContent || '').substring(0, 50).trim() };
         })()
       `,
       returnByValue: true,
       awaitPromise: true,
     });
+    const val = result.result.value;
+    if (val.error) { console.error(val.error); process.exit(1); }
+    console.log(`Focused <${val.tag.toLowerCase()}> "${val.text}"`);
+  });
+}
 
-    const loc = waitResult.result.value;
-    if (loc.error) { console.error(loc.error); process.exit(1); }
+async function cmdSelect(selector, ...values) {
+  if (!selector || values.length === 0) { console.error('Usage: cdp.js select <selector> <value> [value2...]'); process.exit(1); }
 
+  await withCDP(async (cdp) => {
+    const result = await cdp.send('Runtime.evaluate', {
+      expression: `
+        (async function() {
+          const sel = ${JSON.stringify(selector)};
+          const vals = ${JSON.stringify(values)};
+          let el;
+          for (let i = 0; i < 50; i++) {
+            el = document.querySelector(sel);
+            if (el) break;
+            await new Promise(r => setTimeout(r, 100));
+          }
+          if (!el) return { error: 'Element not found after 5s: ' + sel };
+          if (el.tagName !== 'SELECT') return { error: 'Element is not a <select>: ' + sel };
+          const matched = [];
+          for (const opt of el.options) {
+            const match = vals.some(v => opt.value === v || opt.textContent.trim() === v || opt.label === v);
+            opt.selected = match;
+            if (match) matched.push(opt.textContent.trim() || opt.value);
+          }
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          if (matched.length === 0) return { error: 'No options matched: ' + vals.join(', ') };
+          return { selected: matched };
+        })()
+      `,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    const val = result.result.value;
+    if (val.error) { console.error(val.error); process.exit(1); }
+    console.log(`Selected: ${val.selected.join(', ')}`);
+  });
+}
+
+async function cmdUpload(selector, ...filePaths) {
+  if (!selector || filePaths.length === 0) { console.error('Usage: cdp.js upload <selector> <file> [file2...]'); process.exit(1); }
+
+  // Resolve absolute paths
+  const resolved = filePaths.map(f => path.resolve(f));
+  for (const f of resolved) {
+    if (!fs.existsSync(f)) { console.error(`File not found: ${f}`); process.exit(1); }
+  }
+
+  await withCDP(async (cdp) => {
+    // Enable DOM to use querySelector on the backend
+    await cdp.send('DOM.enable');
+    const doc = await cdp.send('DOM.getDocument');
+    const node = await cdp.send('DOM.querySelector', {
+      nodeId: doc.root.nodeId,
+      selector,
+    });
+    if (!node.nodeId) { console.error(`Element not found: ${selector}`); process.exit(1); }
+    await cdp.send('DOM.setFileInputFiles', {
+      nodeId: node.nodeId,
+      files: resolved,
+    });
+    console.log(`Uploaded ${resolved.length} file(s) to ${selector}: ${resolved.map(f => path.basename(f)).join(', ')}`);
+  });
+}
+
+async function cmdDrag(fromSelector, toSelector) {
+  if (!fromSelector || !toSelector) { console.error('Usage: cdp.js drag <from-selector> <to-selector>'); process.exit(1); }
+
+  await withCDP(async (cdp) => {
+    const from = await locateElement(cdp, fromSelector);
+    const to = await locateElement(cdp, toSelector);
+
+    // Move to source, press, move to target, release
     await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mousePressed', x: loc.x, y: loc.y, button: 'left', clickCount: 1
+      type: 'mouseMoved', x: from.x, y: from.y,
     });
     await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased', x: loc.x, y: loc.y, button: 'left', clickCount: 1
+      type: 'mousePressed', x: from.x, y: from.y, button: 'left', clickCount: 1,
+    });
+    // Intermediate steps for drag recognition
+    const steps = 5;
+    for (let i = 1; i <= steps; i++) {
+      const x = from.x + (to.x - from.x) * (i / steps);
+      const y = from.y + (to.y - from.y) * (i / steps);
+      await cdp.send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved', x, y,
+      });
+    }
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x: to.x, y: to.y, button: 'left', clickCount: 1,
     });
 
-    console.log(`Clicked <${loc.tag.toLowerCase()}> "${loc.text}" at (${Math.round(loc.x)}, ${Math.round(loc.y)})`);
+    console.log(`Dragged <${from.tag.toLowerCase()}> to <${to.tag.toLowerCase()}> (${Math.round(from.x)},${Math.round(from.y)}) -> (${Math.round(to.x)},${Math.round(to.y)})`);
   });
 }
 
@@ -712,6 +897,55 @@ async function cmdWaitFor(selector, timeoutMs) {
     }
     console.log(`Found <${val.tag}> matching ${selector}`);
     if (val.text) console.log(`Text: ${val.text}`);
+  });
+}
+
+async function cmdDialog(action, promptText) {
+  const validActions = ['accept', 'dismiss'];
+  if (!action || !validActions.includes(action.toLowerCase())) {
+    console.error('Usage: cdp.js dialog <accept|dismiss> [prompt-text]');
+    console.error('Sets up auto-handling for the next dialog. Run BEFORE the action that triggers it.');
+    process.exit(1);
+  }
+
+  const accept = action.toLowerCase() === 'accept';
+  const state = loadSessionState();
+  state.dialogHandler = { accept, promptText: promptText || '' };
+  saveSessionState(state);
+  console.log(`Dialog handler set: will ${accept ? 'accept' : 'dismiss'} the next dialog${promptText ? ` with text: "${promptText}"` : ''}`);
+}
+
+async function cmdWaitForNavigation(timeoutMs) {
+  const timeout = parseInt(timeoutMs, 10) || 10000;
+
+  await withCDP(async (cdp) => {
+    await cdp.send('Page.enable');
+
+    const result = await cdp.send('Runtime.evaluate', {
+      expression: `
+        (async function() {
+          const deadline = Date.now() + ${timeout};
+          // Wait for readyState to be complete
+          while (Date.now() < deadline) {
+            if (document.readyState === 'complete') {
+              return { ready: true, url: location.href, title: document.title };
+            }
+            await new Promise(r => setTimeout(r, 100));
+          }
+          return { ready: false, url: location.href, readyState: document.readyState };
+        })()
+      `,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+
+    const val = result.result.value;
+    if (!val.ready) {
+      console.error(`Page not ready after ${timeout}ms (readyState: ${val.readyState})`);
+      process.exit(1);
+    }
+    console.log(`Page ready: ${val.url}`);
+    console.log(`Title: ${val.title}`);
   });
 }
 
@@ -855,6 +1089,9 @@ async function dispatch(command, args) {
     }
     case 'screenshot': await cmdScreenshot(); break;
     case 'click': await cmdClick(args.join(' ')); break;
+    case 'doubleclick': await cmdDoubleClick(args.join(' ')); break;
+    case 'hover': await cmdHover(args.join(' ')); break;
+    case 'focus': await cmdFocus(args.join(' ')); break;
     case 'type': {
       const selector = args[0];
       const text = args.slice(1).join(' ');
@@ -862,7 +1099,12 @@ async function dispatch(command, args) {
       break;
     }
     case 'keyboard': await cmdKeyboard(args.join(' ')); break;
+    case 'select': await cmdSelect(args[0], ...args.slice(1)); break;
+    case 'upload': await cmdUpload(args[0], ...args.slice(1)); break;
+    case 'drag': await cmdDrag(args[0], args[1]); break;
+    case 'dialog': await cmdDialog(args[0], args.slice(1).join(' ') || undefined); break;
     case 'waitfor': await cmdWaitFor(args[0], args[1]); break;
+    case 'waitfornav': await cmdWaitForNavigation(args[0]); break;
     case 'press': await cmdPress(args[0]); break;
     case 'scroll': await cmdScroll(args[0]); break;
     case 'eval': await cmdEval(args.join(' ')); break;
@@ -892,9 +1134,17 @@ Commands:
   dom [selector]      Get compact DOM (--full for no truncation)
   screenshot          Capture screenshot
   click <selector>    Click an element (waits up to 5s, scrolls into view)
+  doubleclick <sel>   Double-click an element
+  hover <selector>    Hover over an element (triggers tooltips/menus)
+  focus <selector>    Focus an element without clicking
   type <sel> <text>   Type text into element (focuses selector first)
   keyboard <text>     Type text at current caret position (no selector)
+  select <sel> <val>  Select option(s) from a <select> by value or label
+  upload <sel> <file> Upload file(s) to a file input
+  drag <from> <to>    Drag from one element to another
+  dialog <accept|dismiss> [text]  Handle alert/confirm/prompt dialog
   waitfor <sel> [ms]  Wait for element to appear (default 5000ms)
+  waitfornav [ms]     Wait for page navigation to complete (default 10000ms)
   press <key>         Press a key (Enter, Tab, Escape, etc.)
   scroll <up|down>    Scroll the page
   eval <js>           Evaluate JavaScript

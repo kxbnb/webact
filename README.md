@@ -101,9 +101,17 @@ node cdp.js dom                     # Get compact DOM (~4000 chars)
 node cdp.js dom <selector>          # Get DOM subtree
 node cdp.js screenshot              # Capture screenshot
 node cdp.js click <selector>        # Click an element (waits up to 5s, scrolls into view)
+node cdp.js doubleclick <selector>  # Double-click an element
+node cdp.js hover <selector>        # Hover over an element (triggers tooltips/menus)
+node cdp.js focus <selector>        # Focus an element without clicking
 node cdp.js type <selector> <text>  # Type into an input (focuses selector first)
 node cdp.js keyboard <text>         # Type at current caret position (no selector)
+node cdp.js select <sel> <value>    # Select option(s) from a <select> dropdown
+node cdp.js upload <sel> <file>     # Upload file(s) to a file input
+node cdp.js drag <from> <to>        # Drag from one selector to another
+node cdp.js dialog accept|dismiss   # Handle alert/confirm/prompt dialogs
 node cdp.js waitfor <sel> [ms]      # Wait for element to appear (default 5000ms)
+node cdp.js waitfornav [ms]         # Wait for navigation to complete (default 10s)
 node cdp.js press <key>             # Press a key (Enter, Tab, Escape)
 node cdp.js scroll <up|down>        # Scroll the page
 node cdp.js eval <js>               # Run JavaScript in page context

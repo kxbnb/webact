@@ -44,9 +44,17 @@ Because the bash command is identical every invocation, the user only approves i
 | `dom` | `[]` or `["<selector>"]` or `["--full"]` | `{"command": "dom", "args": []}` |
 | `screenshot` | none | `{"command": "screenshot", "args": []}` |
 | `click` | `["<selector>"]` | `{"command": "click", "args": ["button.submit"]}` |
+| `doubleclick` | `["<selector>"]` | `{"command": "doubleclick", "args": ["td.cell"]}` |
+| `hover` | `["<selector>"]` | `{"command": "hover", "args": [".menu-trigger"]}` |
+| `focus` | `["<selector>"]` | `{"command": "focus", "args": ["input[name=q]"]}` |
 | `type` | `["<selector>", "<text>"]` | `{"command": "type", "args": ["input[name=q]", "search query"]}` |
 | `keyboard` | `["<text>"]` | `{"command": "keyboard", "args": ["hello world"]}` |
+| `select` | `["<selector>", "<value>"]` | `{"command": "select", "args": ["select#country", "US"]}` |
+| `upload` | `["<selector>", "<path>"]` | `{"command": "upload", "args": ["input[type=file]", "/tmp/photo.png"]}` |
+| `drag` | `["<from>", "<to>"]` | `{"command": "drag", "args": [".card:first-child", ".dropzone"]}` |
+| `dialog` | `["accept"]` or `["dismiss"]` or `["accept", "<text>"]` | `{"command": "dialog", "args": ["accept"]}` |
 | `waitfor` | `["<selector>"]` or `["<selector>", "<ms>"]` | `{"command": "waitfor", "args": [".dropdown", "5000"]}` |
+| `waitfornav` | `[]` or `["<ms>"]` | `{"command": "waitfornav", "args": ["5000"]}` |
 | `press` | `["<key>"]` | `{"command": "press", "args": ["Enter"]}` |
 | `scroll` | `["up"]` or `["down"]` | `{"command": "scroll", "args": ["down"]}` |
 | `eval` | `["<js>"]` | `{"command": "eval", "args": ["document.title"]}` |
