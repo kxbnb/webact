@@ -31,7 +31,7 @@ node <base-dir>/webact.js press Enter
 node <base-dir>/webact.js dom
 ```
 
-**Auto-brief:** State-changing commands (navigate, click, hover, press Enter/Tab, scroll, select, waitfor) auto-print a compact page summary showing URL, title, inputs, buttons, and links. You usually don't need a separate `dom` call. Use `dom` only when you need the full page structure or a specific selector's subtree.
+**Auto-brief:** State-changing commands (navigate, click, hover, press Enter/Tab, scroll, select, waitfor) auto-print a compact page summary showing URL, title, inputs, buttons, links, and total element counts. You usually don't need a separate `dom` call. Use `dom` only when you need the full page structure, `axtree -i` for a quick list of all interactive elements, or `axtree` for the full semantic tree.
 
 ### Command Reference
 
@@ -42,7 +42,7 @@ node <base-dir>/webact.js dom
 | `forward` | `node webact.js forward` |
 | `reload` | `node webact.js reload` |
 | `dom [selector] [--full]` | `node webact.js dom` or `node webact.js dom .results` |
-| `axtree [selector]` | `node webact.js axtree` or `node webact.js axtree form` |
+| `axtree [selector] [-i]` | `node webact.js axtree` or `node webact.js axtree -i` |
 | `screenshot` | `node webact.js screenshot` |
 | `pdf [path]` | `node webact.js pdf` or `node webact.js pdf /tmp/page.pdf` |
 | `click <selector>` | `node webact.js click button.submit` |
@@ -81,6 +81,8 @@ node <base-dir>/webact.js dom
 **`dialog` behavior:** Sets a one-shot auto-handler. Run BEFORE the action that triggers the dialog.
 
 **`axtree` vs `dom`:** The accessibility tree shows semantic roles (button, link, heading, textbox) and accessible names — better for understanding page structure. Use `dom` when you need HTML structure/selectors; use `axtree` when you need to understand what's on the page.
+
+**`axtree -i` (interactive mode):** Shows only actionable elements (buttons, links, inputs, etc.) as a flat numbered list. Most token-efficient way to see what you can interact with on a page — typically ~500 tokens vs ~4000 for full `dom`.
 
 **`press` combos:** Supports modifier keys: `Ctrl+A` (select all), `Ctrl+C` (copy), `Meta+V` (paste on Mac), `Shift+Enter`, etc. Modifiers: Ctrl, Alt, Shift, Meta/Cmd.
 

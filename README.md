@@ -102,6 +102,7 @@ node webact.js reload                  # Reload the current page
 node webact.js dom                     # Get compact DOM (~4000 chars)
 node webact.js dom <selector>          # Get DOM subtree
 node webact.js axtree                  # Get accessibility tree (semantic roles + names)
+node webact.js axtree -i               # Interactive-only: flat indexed list of actions
 node webact.js axtree <selector>       # Get AX tree for a specific element
 node webact.js screenshot              # Capture screenshot
 node webact.js pdf [path]              # Save page as PDF

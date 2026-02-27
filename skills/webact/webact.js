@@ -267,11 +267,19 @@ const PAGE_BRIEF_SCRIPT = `(function() {
     const txt = el.textContent.trim().substring(0, 25);
     if (txt && !seen.has(txt)) { seen.add(txt); links.push(txt); }
   });
+  const totalInputs = document.querySelectorAll('input:not([type=hidden]),textarea,select').length;
+  const totalButtons = document.querySelectorAll('button,[role=button],input[type=submit]').length;
+  const totalLinks = document.querySelectorAll('a[href]').length;
   const short = u.length > 80 ? u.substring(0, 80) + '...' : u;
   let r = '--- ' + short + ' | ' + t + ' ---';
   if (inputs.length) r += '\\n' + inputs.join(' ');
   if (buttons.length) r += '\\n' + buttons.join(' ');
   if (links.length) r += '\\nLinks: ' + links.join(', ');
+  const counts = [];
+  if (totalInputs > inputs.length) counts.push(totalInputs + ' inputs');
+  if (totalButtons > buttons.length) counts.push(totalButtons + ' buttons');
+  if (totalLinks > links.length) counts.push(totalLinks + ' links');
+  if (counts.length) r += '\\n(' + counts.join(', ') + ' total — use dom or axtree for full list)';
   return r;
 })()`;
 
@@ -1214,13 +1222,12 @@ async function cmdClose() {
 
 // --- Tier 1: axtree, cookies, back/forward/reload, rightclick, key combos, clear, pdf ---
 
-async function cmdAxtree(selector) {
+async function cmdAxtree(selector, interactiveOnly) {
   await withCDP(async (cdp) => {
     await cdp.send('Accessibility.enable');
 
     let nodes;
     if (selector) {
-      // Get AX tree for a specific element
       const objResult = await cdp.send('Runtime.evaluate', {
         expression: `document.querySelector(${JSON.stringify(selector)})`,
       });
@@ -1237,76 +1244,109 @@ async function cmdAxtree(selector) {
       nodes = result.nodes;
     }
 
-    // Build compact YAML-like output from AX tree
     const SKIP_ROLES = new Set(['InlineTextBox', 'LineBreak']);
-    const PASS_THROUGH_ROLES = new Set(['none', 'generic']); // traverse but don't print
+    const PASS_THROUGH_ROLES = new Set(['none', 'generic']);
+    const INTERACTIVE_ROLES = new Set([
+      'button', 'link', 'textbox', 'searchbox', 'combobox', 'checkbox', 'radio',
+      'switch', 'slider', 'spinbutton', 'tab', 'menuitem', 'menuitemcheckbox',
+      'menuitemradio', 'option', 'listbox', 'tree', 'treeitem',
+    ]);
     const nodeMap = new Map();
     for (const n of nodes) nodeMap.set(n.nodeId, n);
 
-    function formatNode(node, depth) {
-      const role = node.role?.value || '';
-      if (SKIP_ROLES.has(role)) return '';
-
-      const name = node.name?.value || '';
-      const value = node.value?.value || '';
-      const isPassThrough = PASS_THROUGH_ROLES.has(role) && !name;
-
-      let out = '';
-
-      if (!isPassThrough) {
-        // Skip StaticText if parent already shows the name
-        if (role === 'StaticText') {
-          // Only show if it adds info not already in parent
-          const indent = '  '.repeat(Math.min(depth, 6));
-          if (name.length > 80) {
-            out += `${indent}- text "${name.substring(0, 80)}..."\n`;
+    if (interactiveOnly) {
+      // Flat list of interactive elements with indices — token-efficient
+      let idx = 1;
+      let output = '';
+      function collectInteractive(node) {
+        const role = node.role?.value || '';
+        if (INTERACTIVE_ROLES.has(role)) {
+          const name = node.name?.value || '';
+          const value = node.value?.value || '';
+          let line = `[${idx}] ${role}`;
+          if (name) line += ` "${name.substring(0, 80)}"`;
+          if (value) line += ` val="${value.substring(0, 40)}"`;
+          const props = {};
+          for (const p of (node.properties || [])) {
+            if (p.name === 'disabled' && p.value?.value) props.disabled = true;
+            if (p.name === 'checked') props.checked = p.value?.value;
+            if (p.name === 'expanded') props.expanded = p.value?.value;
+            if (p.name === 'selected' && p.value?.value) props.selected = true;
           }
-          // Short static text is usually captured in parent's name — skip
-          return out;
+          const propStr = Object.entries(props).map(([k,v]) => `${k}=${v}`).join(' ');
+          if (propStr) line += ` [${propStr}]`;
+          output += line + '\n';
+          idx++;
+        }
+        for (const cid of (node.childIds || [])) {
+          const child = nodeMap.get(cid);
+          if (child) collectInteractive(child);
+        }
+      }
+      if (nodes[0]) collectInteractive(nodes[0]);
+      if (output.length > 6000) {
+        output = output.substring(0, 6000) + '\n... (truncated)';
+      }
+      console.log(output || '(no interactive elements found)');
+    } else {
+      // Full tree format
+      function formatNode(node, depth) {
+        const role = node.role?.value || '';
+        if (SKIP_ROLES.has(role)) return '';
+
+        const name = node.name?.value || '';
+        const value = node.value?.value || '';
+        const isPassThrough = PASS_THROUGH_ROLES.has(role) && !name;
+
+        let out = '';
+
+        if (!isPassThrough) {
+          if (role === 'StaticText') {
+            const indent = '  '.repeat(Math.min(depth, 6));
+            if (name.length > 80) {
+              out += `${indent}- text "${name.substring(0, 80)}..."\n`;
+            }
+            return out;
+          }
+
+          const indent = '  '.repeat(Math.min(depth, 6));
+          let line = `${indent}- ${role}`;
+          if (name) line += ` "${name.substring(0, 80)}"`;
+          if (value) line += ` value="${value.substring(0, 60)}"`;
+
+          const props = {};
+          for (const p of (node.properties || [])) {
+            if (p.name === 'disabled' && p.value?.value) props.disabled = true;
+            if (p.name === 'required' && p.value?.value) props.required = true;
+            if (p.name === 'checked') props.checked = p.value?.value;
+            if (p.name === 'expanded') props.expanded = p.value?.value;
+            if (p.name === 'selected' && p.value?.value) props.selected = true;
+          }
+          const propStr = Object.entries(props).map(([k,v]) => `${k}=${v}`).join(' ');
+          if (propStr) line += ` [${propStr}]`;
+
+          out += line + '\n';
         }
 
-        const indent = '  '.repeat(Math.min(depth, 6));
-        let line = `${indent}- ${role}`;
-        if (name) line += ` "${name.substring(0, 80)}"`;
-        if (value) line += ` value="${value.substring(0, 60)}"`;
-
-        // Add useful properties
-        const props = {};
-        for (const p of (node.properties || [])) {
-          if (p.name === 'disabled' && p.value?.value) props.disabled = true;
-          if (p.name === 'required' && p.value?.value) props.required = true;
-          if (p.name === 'checked') props.checked = p.value?.value;
-          if (p.name === 'expanded') props.expanded = p.value?.value;
-          if (p.name === 'selected' && p.value?.value) props.selected = true;
+        const childIds = node.childIds || [];
+        for (const cid of childIds) {
+          const child = nodeMap.get(cid);
+          if (child) out += formatNode(child, isPassThrough ? depth : depth + 1);
         }
-        const propStr = Object.entries(props).map(([k,v]) => `${k}=${v}`).join(' ');
-        if (propStr) line += ` [${propStr}]`;
-
-        out += line + '\n';
+        return out;
       }
 
-      // Process children (pass-through nodes don't increase depth)
-      const childIds = node.childIds || [];
-      for (const cid of childIds) {
-        const child = nodeMap.get(cid);
-        if (child) out += formatNode(child, isPassThrough ? depth : depth + 1);
+      const root = nodes[0];
+      let output = '';
+      if (root) {
+        output = formatNode(root, 0);
       }
-      return out;
+      if (output.length > 6000) {
+        output = output.substring(0, 6000) + '\n... (truncated)';
+      }
+      console.log(output || '(empty accessibility tree)');
     }
 
-    // Find root node
-    const root = nodes[0];
-    let output = '';
-    if (root) {
-      output = formatNode(root, 0);
-    }
-
-    // Truncate if too long
-    if (output.length > 6000) {
-      output = output.substring(0, 6000) + '\n... (truncated)';
-    }
-
-    console.log(output || '(empty accessibility tree)');
     await cdp.send('Accessibility.disable');
   });
 }
@@ -1816,7 +1856,12 @@ async function dispatch(command, args) {
     case 'tab': await cmdTab(args[0]); break;
     case 'newtab': await cmdNewTab(args.join(' ') || undefined); break;
     case 'close': await cmdClose(); break;
-    case 'axtree': await cmdAxtree(args.join(' ') || null); break;
+    case 'axtree': {
+      const interactive = args.includes('--interactive') || args.includes('-i');
+      const selector = args.filter(a => a !== '--interactive' && a !== '-i').join(' ') || null;
+      await cmdAxtree(selector, interactive);
+      break;
+    }
     case 'cookies': await cmdCookies(args[0], ...args.slice(1)); break;
     case 'back': await cmdBack(); break;
     case 'forward': await cmdForward(); break;
@@ -1852,6 +1897,7 @@ Commands:
   reload              Reload the current page
   dom [selector]      Get compact DOM (--full for no truncation)
   axtree [selector]   Get accessibility tree (semantic roles + names)
+  axtree -i           Interactive-only: flat indexed list of actionable elements
   screenshot          Capture screenshot
   pdf [path]          Save page as PDF
   click <selector>    Click an element (waits up to 5s, scrolls into view)
