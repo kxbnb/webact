@@ -294,8 +294,9 @@ async function withCDP(fn) {
   }
   const cdp = await createCDP(wsUrl);
   try {
-    // If a dialog handler is pending, activate it
     const state = loadSessionState();
+
+    // If a dialog handler is pending, activate it
     if (state.dialogHandler) {
       const { accept, promptText } = state.dialogHandler;
       await cdp.send('Page.enable');
@@ -308,6 +309,28 @@ async function withCDP(fn) {
       delete state.dialogHandler;
       saveSessionState(state);
     }
+
+    // If network blocking is configured, apply it
+    if (state.blockPatterns) {
+      const { resourceTypes, urlPatterns } = state.blockPatterns;
+      await cdp.send('Fetch.enable', {
+        patterns: [{ requestStage: 'Request' }],
+      });
+      cdp.on('Fetch.requestPaused', async (params) => {
+        try {
+          const rt = params.resourceType;
+          const url = params.request.url;
+          const blocked = resourceTypes.includes(rt) ||
+            urlPatterns.some(p => url.includes(p));
+          if (blocked) {
+            await cdp.send('Fetch.failRequest', { requestId: params.requestId, errorReason: 'BlockedByClient' });
+          } else {
+            await cdp.send('Fetch.continueRequest', { requestId: params.requestId });
+          }
+        } catch {}
+      });
+    }
+
     return await fn(cdp);
   } finally {
     cdp.close();
@@ -1067,14 +1090,40 @@ async function cmdPress(key) {
   });
 }
 
-async function cmdScroll(direction) {
-  if (!direction) { console.error('Usage: webact.js scroll <up|down>'); process.exit(1); }
-  const deltaY = direction.toLowerCase() === 'up' ? -400 : 400;
+async function cmdScroll(target, amount) {
+  if (!target) { console.error('Usage: webact.js scroll <up|down|top|bottom|selector> [pixels]'); process.exit(1); }
+
+  const lower = target.toLowerCase();
 
   await withCDP(async (cdp) => {
-    await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mouseWheel', x: 200, y: 200, deltaX: 0, deltaY,
-    });
+    if (lower === 'top') {
+      await cdp.send('Runtime.evaluate', { expression: 'window.scrollTo(0, 0)' });
+    } else if (lower === 'bottom') {
+      await cdp.send('Runtime.evaluate', { expression: 'window.scrollTo(0, document.body.scrollHeight)' });
+    } else if (lower === 'up' || lower === 'down') {
+      const pixels = parseInt(amount, 10) || 400;
+      const deltaY = lower === 'up' ? -pixels : pixels;
+      await cdp.send('Input.dispatchMouseEvent', {
+        type: 'mouseWheel', x: 200, y: 200, deltaX: 0, deltaY,
+      });
+    } else {
+      // Treat as CSS selector — scroll element into view
+      const result = await cdp.send('Runtime.evaluate', {
+        expression: `
+          (function() {
+            const el = document.querySelector(${JSON.stringify(target)});
+            if (!el) return { error: 'Element not found: ${target}' };
+            el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            return { tag: el.tagName.toLowerCase() };
+          })()
+        `,
+        returnByValue: true,
+      });
+      const val = result.result.value;
+      if (val.error) { console.error(val.error); process.exit(1); }
+      console.log(`Scrolled to ${val.tag} ${target}`);
+    }
+    await new Promise(r => setTimeout(r, 100));
     console.log(await getPageBrief(cdp));
   });
 }
@@ -1463,6 +1512,272 @@ function parseKeyCombo(combo) {
   return { modifiers, key };
 }
 
+// --- Tier 2: console, network blocking, viewport, frames, download, scroll improvements ---
+
+async function cmdConsole(action) {
+  if (!action) action = 'show';
+
+  if (action === 'show' || action === 'errors') {
+    await withCDP(async (cdp) => {
+      await cdp.send('Runtime.enable');
+      const logs = [];
+      let collecting = true;
+
+      cdp.on('Runtime.consoleAPICalled', (params) => {
+        if (!collecting) return;
+        const type = params.type; // log, warn, error, info
+        if (action === 'errors' && type !== 'error') return;
+        const text = params.args.map(a => a.value || a.description || '').join(' ');
+        logs.push(`[${type}] ${text.substring(0, 200)}`);
+      });
+
+      cdp.on('Runtime.exceptionThrown', (params) => {
+        if (!collecting) return;
+        const desc = params.exceptionDetails?.exception?.description || params.exceptionDetails?.text || 'Unknown error';
+        logs.push(`[exception] ${desc.substring(0, 200)}`);
+      });
+
+      // Wait briefly to collect any pending logs
+      await new Promise(r => setTimeout(r, 1000));
+      collecting = false;
+
+      if (logs.length === 0) {
+        console.log('No console output captured (listened for 1s).');
+      } else {
+        console.log(logs.join('\n'));
+      }
+    });
+  } else if (action === 'listen') {
+    // Long-running listener — prints in real time until Ctrl+C
+    await withCDP(async (cdp) => {
+      await cdp.send('Runtime.enable');
+      console.log('Listening for console output (Ctrl+C to stop)...');
+
+      cdp.on('Runtime.consoleAPICalled', (params) => {
+        const type = params.type;
+        const text = params.args.map(a => a.value || a.description || '').join(' ');
+        console.log(`[${type}] ${text.substring(0, 500)}`);
+      });
+
+      cdp.on('Runtime.exceptionThrown', (params) => {
+        const desc = params.exceptionDetails?.exception?.description || params.exceptionDetails?.text || 'Unknown error';
+        console.log(`[exception] ${desc.substring(0, 500)}`);
+      });
+
+      // Keep alive until process is killed
+      await new Promise(() => {});
+    });
+  } else {
+    console.error('Usage: webact.js console [show|errors|listen]');
+    process.exit(1);
+  }
+}
+
+async function cmdBlock(...patterns) {
+  if (patterns.length === 0) {
+    console.error('Usage: webact.js block <pattern> [pattern2...]\nPatterns: images, css, fonts, media, scripts, or URL substring\nUse "block off" to disable blocking.');
+    process.exit(1);
+  }
+
+  const state = loadSessionState();
+
+  if (patterns[0] === 'off') {
+    delete state.blockPatterns;
+    saveSessionState(state);
+    console.log('Request blocking disabled.');
+    return;
+  }
+
+  // Expand shorthand patterns to resource types
+  const RESOURCE_TYPES = {
+    'images': 'Image',
+    'css': 'Stylesheet',
+    'fonts': 'Font',
+    'media': 'Media',
+    'scripts': 'Script',
+  };
+
+  const resourceTypes = [];
+  const urlPatterns = [];
+
+  for (const p of patterns) {
+    if (RESOURCE_TYPES[p.toLowerCase()]) {
+      resourceTypes.push(RESOURCE_TYPES[p.toLowerCase()]);
+    } else {
+      urlPatterns.push(p);
+    }
+  }
+
+  state.blockPatterns = { resourceTypes, urlPatterns };
+  saveSessionState(state);
+
+  console.log(`Blocking: ${patterns.join(', ')}. Takes effect on next page load.`);
+}
+
+async function cmdViewport(width, height) {
+  if (!width) {
+    console.error('Usage: webact.js viewport <width> <height>\nPresets: mobile (375x667), tablet (768x1024), desktop (1280x800)');
+    process.exit(1);
+  }
+
+  // Handle presets
+  const presets = {
+    'mobile': { w: 375, h: 667, dpr: 2, mobile: true },
+    'iphone': { w: 390, h: 844, dpr: 3, mobile: true },
+    'ipad': { w: 820, h: 1180, dpr: 2, mobile: true },
+    'tablet': { w: 768, h: 1024, dpr: 2, mobile: true },
+    'desktop': { w: 1280, h: 800, dpr: 1, mobile: false },
+  };
+
+  let w, h, dpr = 1, mobile = false;
+  const preset = presets[width.toLowerCase()];
+  if (preset) {
+    w = preset.w; h = preset.h; dpr = preset.dpr; mobile = preset.mobile;
+  } else {
+    w = parseInt(width, 10);
+    h = parseInt(height, 10) || Math.round(w * 0.625); // 16:10 default
+    if (isNaN(w)) {
+      console.error('Invalid width. Use a number or preset: mobile, tablet, desktop');
+      process.exit(1);
+    }
+  }
+
+  await withCDP(async (cdp) => {
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: w, height: h, deviceScaleFactor: dpr, mobile,
+    });
+    console.log(`Viewport set to ${w}x${h} (dpr:${dpr}${mobile ? ' mobile' : ''})`);
+  });
+}
+
+async function cmdFrames() {
+  await withCDP(async (cdp) => {
+    const tree = await cdp.send('Page.getFrameTree');
+
+    function printFrame(frame, depth) {
+      const indent = '  '.repeat(depth);
+      const name = frame.frame.name ? ` name="${frame.frame.name}"` : '';
+      const id = frame.frame.id;
+      console.log(`${indent}[${id}]${name} ${frame.frame.url}`);
+      for (const child of (frame.childFrames || [])) {
+        printFrame(child, depth + 1);
+      }
+    }
+
+    await cdp.send('Page.enable');
+    printFrame(tree.frameTree, 0);
+  });
+}
+
+async function cmdFrame(frameIdOrSelector) {
+  if (!frameIdOrSelector) {
+    console.error('Usage: webact.js frame <frameId|selector>\nUse "webact.js frames" to list available frames.\nUse "webact.js frame main" to return to main frame.');
+    process.exit(1);
+  }
+
+  const state = loadSessionState();
+
+  if (frameIdOrSelector === 'main' || frameIdOrSelector === 'top') {
+    delete state.activeFrameId;
+    saveSessionState(state);
+    console.log('Switched to main frame.');
+    return;
+  }
+
+  await withCDP(async (cdp) => {
+    await cdp.send('Page.enable');
+    const tree = await cdp.send('Page.getFrameTree');
+
+    // Try to find frame by ID or name
+    function findFrame(node) {
+      if (node.frame.id === frameIdOrSelector || node.frame.name === frameIdOrSelector) {
+        return node.frame;
+      }
+      for (const child of (node.childFrames || [])) {
+        const found = findFrame(child);
+        if (found) return found;
+      }
+      return null;
+    }
+
+    let frame = findFrame(tree.frameTree);
+
+    // If not found by ID/name, try CSS selector to find iframe element
+    if (!frame) {
+      const result = await cdp.send('Runtime.evaluate', {
+        expression: `
+          (function() {
+            const el = document.querySelector(${JSON.stringify(frameIdOrSelector)});
+            if (!el || el.tagName !== 'IFRAME') return null;
+            return el.getAttribute('name') || el.id || null;
+          })()
+        `,
+        returnByValue: true,
+      });
+      if (result.result.value) {
+        frame = findFrame(tree.frameTree);
+      }
+    }
+
+    if (!frame) {
+      console.error(`Frame not found: ${frameIdOrSelector}`);
+      process.exit(1);
+    }
+
+    state.activeFrameId = frame.id;
+    saveSessionState(state);
+    console.log(`Switched to frame: [${frame.id}] ${frame.url}`);
+  });
+}
+
+async function cmdDownload(action, ...args) {
+  if (!action) action = 'path';
+
+  const state = loadSessionState();
+  const downloadDir = state.downloadDir || path.join(TMP, 'webact-downloads');
+
+  switch (action.toLowerCase()) {
+    case 'path': {
+      const dir = args[0] || downloadDir;
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      state.downloadDir = dir;
+      saveSessionState(state);
+
+      await withCDP(async (cdp) => {
+        await cdp.send('Browser.setDownloadBehavior', {
+          behavior: 'allow',
+          downloadPath: dir,
+        });
+      });
+      console.log(`Downloads will be saved to: ${dir}`);
+      break;
+    }
+    case 'list': {
+      if (!fs.existsSync(downloadDir)) {
+        console.log('No downloads directory.');
+        return;
+      }
+      const files = fs.readdirSync(downloadDir);
+      if (files.length === 0) {
+        console.log('No downloaded files.');
+      } else {
+        for (const f of files) {
+          const stat = fs.statSync(path.join(downloadDir, f));
+          const size = stat.size > 1048576 ? `${(stat.size / 1048576).toFixed(1)}MB` :
+                       stat.size > 1024 ? `${(stat.size / 1024).toFixed(0)}KB` : `${stat.size}B`;
+          console.log(`${f} (${size})`);
+        }
+      }
+      break;
+    }
+    default:
+      console.error('Usage: webact.js download [path <dir>|list]');
+      process.exit(1);
+  }
+}
+
 // --- Command dispatch ---
 
 async function dispatch(command, args) {
@@ -1495,7 +1810,7 @@ async function dispatch(command, args) {
     case 'waitfor': await cmdWaitFor(args[0], args[1]); break;
     case 'waitfornav': await cmdWaitForNavigation(args[0]); break;
     case 'press': await cmdPress(args[0]); break;
-    case 'scroll': await cmdScroll(args[0]); break;
+    case 'scroll': await cmdScroll(args[0], args[1]); break;
     case 'eval': await cmdEval(args.join(' ')); break;
     case 'tabs': await cmdTabs(); break;
     case 'tab': await cmdTab(args[0]); break;
@@ -1509,6 +1824,12 @@ async function dispatch(command, args) {
     case 'rightclick': await cmdRightClick(args.join(' ')); break;
     case 'clear': await cmdClear(args.join(' ')); break;
     case 'pdf': await cmdPdf(args[0]); break;
+    case 'console': await cmdConsole(args[0]); break;
+    case 'block': await cmdBlock(...args); break;
+    case 'viewport': await cmdViewport(args[0], args[1]); break;
+    case 'frames': await cmdFrames(); break;
+    case 'frame': await cmdFrame(args[0]); break;
+    case 'download': await cmdDownload(args[0], ...args.slice(1)); break;
     default:
       console.error(`Unknown command: ${command}`);
       process.exit(1);
@@ -1548,9 +1869,16 @@ Commands:
   waitfor <sel> [ms]  Wait for element to appear (default 5000ms)
   waitfornav [ms]     Wait for page navigation to complete (default 10000ms)
   press <key>         Press a key or combo (Enter, Ctrl+A, Meta+C, etc.)
-  scroll <up|down>    Scroll the page
+  scroll <target> [px] Scroll: up, down, top, bottom, or CSS selector [pixels]
   eval <js>           Evaluate JavaScript
   cookies [get|set|clear|delete]  Manage browser cookies
+  console [show|errors|listen]    View console output or JS errors
+  block <pattern>     Block requests: images, css, fonts, media, scripts, or URL
+  block off           Disable request blocking
+  viewport <w> <h>    Set viewport size (or preset: mobile, tablet, desktop)
+  frames              List all frames/iframes on the page
+  frame <id|sel>      Switch to a frame (use "frame main" to return)
+  download [path|list] Set download dir or list downloaded files
   tabs                List this session's tabs
   tab <id>            Switch to a session-owned tab
   newtab [url]        Open a new tab in this session

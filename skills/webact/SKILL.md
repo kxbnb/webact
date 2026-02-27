@@ -60,9 +60,15 @@ node <base-dir>/webact.js dom
 | `waitfor <selector> [ms]` | `node webact.js waitfor .dropdown 5000` |
 | `waitfornav [ms]` | `node webact.js waitfornav` |
 | `press <key\|combo>` | `node webact.js press Enter` or `node webact.js press Ctrl+A` |
-| `scroll <up\|down>` | `node webact.js scroll down` |
+| `scroll <target> [px]` | `node webact.js scroll down 500` or `node webact.js scroll top` |
 | `eval <js>` | `node webact.js eval document.title` |
 | `cookies [get\|set\|clear\|delete]` | `node webact.js cookies` or `node webact.js cookies set name val` |
+| `console [show\|errors\|listen]` | `node webact.js console` or `node webact.js console errors` |
+| `block <pattern>` | `node webact.js block images css` or `node webact.js block off` |
+| `viewport <w> <h>` | `node webact.js viewport mobile` or `node webact.js viewport 1024 768` |
+| `frames` | `node webact.js frames` |
+| `frame <id\|selector>` | `node webact.js frame main` or `node webact.js frame iframe#embed` |
+| `download [path\|list]` | `node webact.js download path /tmp/dl` or `node webact.js download list` |
 | `tabs` | `node webact.js tabs` |
 | `tab <id>` | `node webact.js tab ABC123` |
 | `newtab [url]` | `node webact.js newtab https://example.com` |
@@ -77,6 +83,14 @@ node <base-dir>/webact.js dom
 **`axtree` vs `dom`:** The accessibility tree shows semantic roles (button, link, heading, textbox) and accessible names — better for understanding page structure. Use `dom` when you need HTML structure/selectors; use `axtree` when you need to understand what's on the page.
 
 **`press` combos:** Supports modifier keys: `Ctrl+A` (select all), `Ctrl+C` (copy), `Meta+V` (paste on Mac), `Shift+Enter`, etc. Modifiers: Ctrl, Alt, Shift, Meta/Cmd.
+
+**`scroll` targets:** `up`/`down` (default 400px, or specify pixels), `top`/`bottom`, or a CSS selector to scroll an element into view.
+
+**`block` patterns:** Block resource types (`images`, `css`, `fonts`, `media`, `scripts`) or URL substrings. Speeds up page loads. Use `block off` to disable.
+
+**`viewport` presets:** `mobile` (375x667), `iphone` (390x844), `ipad` (820x1180), `tablet` (768x1024), `desktop` (1280x800). Or specify exact width and height.
+
+**`frames`:** Lists all frames/iframes on the page. Use `frame <id>` to switch context, `frame main` to return to the top frame.
 
 ### Tab Isolation
 

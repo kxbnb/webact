@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Browser automation via Chrome DevTools Protocol for Claude Code",
-    "version": "2.1.0"
+    "version": "2.2.0"
   },
   "plugins": [
     {
       "name": "webact",
       "description": "Control Chrome via raw CDP - browse the web, interact with pages, accomplish goals through a perceive-act loop",
-      "version": "2.1.0",
+      "version": "2.2.0",
       "source": {
         "source": "github",
         "repo": "kxbnb/webact"

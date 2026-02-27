@@ -120,12 +120,23 @@ node webact.js dialog accept|dismiss   # Handle alert/confirm/prompt dialogs
 node webact.js waitfor <sel> [ms]      # Wait for element to appear (default 5s)
 node webact.js waitfornav [ms]         # Wait for navigation to complete (default 10s)
 node webact.js press <key>             # Press a key or combo (Enter, Ctrl+A, Meta+C)
-node webact.js scroll <up|down>        # Scroll the page
+node webact.js scroll <target> [px]    # Scroll: up, down, top, bottom, or selector
 node webact.js eval <js>               # Run JavaScript in page context
 node webact.js cookies                 # List cookies for current page
 node webact.js cookies set <n> <v>     # Set a cookie
 node webact.js cookies delete <name>   # Delete a cookie
 node webact.js cookies clear           # Clear all cookies
+node webact.js console                 # Show recent console output
+node webact.js console errors          # Show only JS errors
+node webact.js block images css        # Block resource types (images/css/fonts/media/scripts)
+node webact.js block off               # Disable request blocking
+node webact.js viewport mobile         # Set viewport (presets: mobile, tablet, desktop)
+node webact.js viewport 1024 768       # Set viewport with exact dimensions
+node webact.js frames                  # List all frames/iframes
+node webact.js frame <id|sel>          # Switch to a frame
+node webact.js frame main              # Return to main frame
+node webact.js download path /tmp/dl   # Set download directory
+node webact.js download list           # List downloaded files
 node webact.js tabs                    # List this session's tabs
 node webact.js tab <id>                # Switch to a session-owned tab
 node webact.js newtab [url]            # Open a new tab in this session
