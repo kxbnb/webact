@@ -366,23 +366,34 @@ function findBrowser() {
 }
 
 async function cmdLaunch() {
+  const userDataDir = path.join(TMP, 'cdp-chrome-profile');
+  const portFile = path.join(userDataDir, '.cdp-port');
+
+  // Resolve the right host for CDP connections (handles WSL2)
+  if (IS_WSL) await resolveCDPHost();
+
+  // Check if Chrome is already running from a previous session
+  // The port changes each launch, so we save it to a file keyed to the user-data-dir
+  try {
+    const savedPort = parseInt(fs.readFileSync(portFile, 'utf8').trim(), 10);
+    if (savedPort) {
+      CDP_PORT = savedPort;
+      await getDebugTabs();
+      console.log(`Browser already running on port ${CDP_PORT}.`);
+      if (IS_WSL) console.log(`WSL: connecting to ${CDP_HOST}`);
+      return cmdConnect();
+    }
+  } catch {
+    // Saved port didn't respond — Chrome likely closed. Clean up stale file.
+    try { fs.unlinkSync(portFile); } catch {}
+  }
+
   // Determine port: env override or find a free one
   if (process.env.CDP_PORT) {
     CDP_PORT = parseInt(process.env.CDP_PORT, 10);
   } else {
     CDP_PORT = await findFreePort();
   }
-
-  // Resolve the right host for CDP connections (handles WSL2)
-  if (IS_WSL) await resolveCDPHost();
-
-  // Check if a CDP browser is already running on this port
-  try {
-    await getDebugTabs();
-    console.log(`Browser already running on port ${CDP_PORT}.`);
-    if (IS_WSL) console.log(`WSL: connecting to ${CDP_HOST}`);
-    return cmdConnect();
-  } catch {}
 
   const browser = findBrowser();
   if (!browser) {
@@ -392,12 +403,17 @@ async function cmdLaunch() {
     process.exit(1);
   }
 
-  let userDataDir = path.join(TMP, 'cdp-chrome-profile');
+  let launchDataDir = userDataDir;
   const isWindowsBrowser = IS_WSL && browser.path.startsWith('/mnt/');
 
   // Windows browsers need Windows-style paths
   if (isWindowsBrowser) {
-    userDataDir = wslWindowsPath(userDataDir);
+    launchDataDir = wslWindowsPath(userDataDir);
+  }
+
+  // Ensure user data dir exists so we can write the port file
+  if (!fs.existsSync(userDataDir)) {
+    fs.mkdirSync(userDataDir, { recursive: true });
   }
 
   const spawnOpts = { stdio: 'ignore' };
@@ -410,7 +426,7 @@ async function cmdLaunch() {
 
   const child = spawn(browser.path, [
     `--remote-debugging-port=${CDP_PORT}`,
-    `--user-data-dir=${userDataDir}`,
+    `--user-data-dir=${launchDataDir}`,
     '--no-first-run',
     '--no-default-browser-check',
   ], spawnOpts);
@@ -422,6 +438,8 @@ async function cmdLaunch() {
     try {
       if (IS_WSL) await resolveCDPHost();
       await getDebugTabs();
+      // Save the port so future launches can find this Chrome instance
+      fs.writeFileSync(portFile, String(CDP_PORT));
       console.log(`${browser.name} launched (PID: ${child.pid}) on port ${CDP_PORT}.`);
       if (IS_WSL) console.log(`WSL: connecting to ${CDP_HOST}`);
       return cmdConnect();
