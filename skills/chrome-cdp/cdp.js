@@ -400,8 +400,7 @@ async function cmdLaunch() {
     if (savedPort) {
       CDP_PORT = savedPort;
       await getDebugTabs();
-      console.log(`Browser already running on port ${CDP_PORT}.`);
-      if (IS_WSL) console.log(`WSL: connecting to ${CDP_HOST}`);
+      console.log(`Browser already running.`);
       return cmdConnect();
     }
   } catch {
@@ -461,8 +460,7 @@ async function cmdLaunch() {
       await getDebugTabs();
       // Save the port so future launches can find this Chrome instance
       fs.writeFileSync(portFile, String(CDP_PORT));
-      console.log(`${browser.name} launched (PID: ${child.pid}) on port ${CDP_PORT}.`);
-      if (IS_WSL) console.log(`WSL: connecting to ${CDP_HOST}`);
+      console.log(`${browser.name} launched successfully.`);
       return cmdConnect();
     } catch {}
   }
@@ -487,9 +485,7 @@ async function cmdConnect() {
 
   const cmdFile = path.join(TMP, `cdp-command-${currentSessionId}.json`);
   console.log(`Session: ${currentSessionId}`);
-  console.log(`Port: ${CDP_PORT}`);
   console.log(`Command file: ${cmdFile}`);
-  console.log(`New tab created: [${newTab.id}] ${newTab.url}`);
 }
 
 async function cmdNavigate(url) {

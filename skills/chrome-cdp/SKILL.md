@@ -135,7 +135,7 @@ digraph perceive_act {
 
 4. **Stop when blocked.** If you encounter a login wall, CAPTCHA, 2FA prompt, or cookie consent that blocks progress, tell the user. Do not guess credentials or attempt to bypass security.
 
-5. **Wait for dynamic content.** After navigation or clicks that trigger page loads, use `eval document.readyState` or check for specific elements before reading DOM.
+5. **Wait for dynamic content.** After clicks that trigger page loads, use `waitfornav` or `waitfor <selector>` before reading DOM.
 
 6. **Use CSS selectors for targeting.** When you need to click or type into a specific element, identify it from the DOM output using CSS selectors (id, class, aria-label, data-testid, or structural selectors).
 
@@ -148,12 +148,11 @@ digraph perceive_act {
 ```bash
 # Launch Chrome and get a session ID
 node <base-dir>/cdp.js launch
-# Output includes: Session: a1b2c3d4
-#                  Port: 52431
-#                  Command file: /tmp/cdp-command-a1b2c3d4.json  (path varies by OS)
+# Output: Session: a1b2c3d4
+#         Command file: /tmp/cdp-command-a1b2c3d4.json  (path varies by OS)
 ```
 
-If Chrome is not running with debugging enabled, `launch` will start a new instance on an automatically discovered free port. The port is printed in the output and saved in the session state — all subsequent `run` commands use it automatically.
+If Chrome is not running with debugging enabled, `launch` will start a new instance automatically. Connection details are saved in the session state — all subsequent `run` commands use them automatically.
 
 To force a specific port, set `CDP_PORT`:
 ```bash
