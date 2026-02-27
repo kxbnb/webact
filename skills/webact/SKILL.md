@@ -43,6 +43,7 @@ node <base-dir>/webact.js dom
 | `reload` | `node webact.js reload` |
 | `dom [selector] [--full]` | `node webact.js dom` or `node webact.js dom .results` |
 | `axtree [selector] [-i]` | `node webact.js axtree` or `node webact.js axtree -i` |
+| `observe` | `node webact.js observe` |
 | `screenshot` | `node webact.js screenshot` |
 | `pdf [path]` | `node webact.js pdf` or `node webact.js pdf /tmp/page.pdf` |
 | `click <selector>` | `node webact.js click button.submit` |
@@ -82,7 +83,11 @@ node <base-dir>/webact.js dom
 
 **`axtree` vs `dom`:** The accessibility tree shows semantic roles (button, link, heading, textbox) and accessible names — better for understanding page structure. Use `dom` when you need HTML structure/selectors; use `axtree` when you need to understand what's on the page.
 
-**`axtree -i` (interactive mode):** Shows only actionable elements (buttons, links, inputs, etc.) as a flat numbered list. Most token-efficient way to see what you can interact with on a page — typically ~500 tokens vs ~4000 for full `dom`.
+**`axtree -i` (interactive mode):** Shows only actionable elements (buttons, links, inputs, etc.) as a flat numbered list. Most token-efficient way to see what you can interact with on a page — typically ~500 tokens vs ~4000 for full `dom`. After running `axtree -i`, use the ref numbers directly as selectors: `click 1`, `type 3 hello`. Refs are cached per URL and reused on revisits.
+
+**`observe`:** Like `axtree -i` but formats each element as a ready-to-use command (e.g. `click 1`, `type 3 <text>`, `select 5 <value>`). Generates the ref map as a side effect.
+
+**Ref-based targeting:** After `axtree -i` or `observe`, numeric refs work in all selector-accepting commands: `click`, `type`, `select`, `hover`, `focus`, `clear`, `doubleclick`, `rightclick`, `upload`, `drag`, `waitfor`, `dom`.
 
 **`press` combos:** Supports modifier keys: `Ctrl+A` (select all), `Ctrl+C` (copy), `Meta+V` (paste on Mac), `Shift+Enter`, etc. Modifiers: Ctrl, Alt, Shift, Meta/Cmd.
 

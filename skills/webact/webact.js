@@ -107,6 +107,78 @@ function saveSessionState(state) {
   fs.writeFileSync(sessionStateFile(), JSON.stringify(state, null, 2));
 }
 
+// --- Ref-based targeting ---
+
+// Injected into the page to generate unique CSS selectors for elements
+const SELECTOR_GEN_SCRIPT = `if (!window.__webactGenSelector) {
+  window.__webactGenSelector = function(el) {
+    if (el.id) {
+      try {
+        var sel = '#' + CSS.escape(el.id);
+        if (document.querySelectorAll(sel).length === 1) return sel;
+      } catch(e) {}
+    }
+    var tid = el.getAttribute('data-testid');
+    if (tid && tid.indexOf('"') < 0 && tid.indexOf(']') < 0) {
+      var sel = '[data-testid="' + tid + '"]';
+      try { if (document.querySelectorAll(sel).length === 1) return sel; } catch(e) {}
+    }
+    var al = el.getAttribute('aria-label');
+    if (al && al.indexOf('"') < 0 && al.indexOf(']') < 0) {
+      var sel = '[aria-label="' + al + '"]';
+      try { if (document.querySelectorAll(sel).length === 1) return sel; } catch(e) {}
+    }
+    var parts = [];
+    var cur = el;
+    while (cur && cur !== document.body && cur !== document.documentElement) {
+      var tag = cur.tagName.toLowerCase();
+      var parent = cur.parentElement;
+      if (parent) {
+        var siblings = Array.from(parent.children).filter(function(c) { return c.tagName === cur.tagName; });
+        if (siblings.length > 1) tag += ':nth-of-type(' + (siblings.indexOf(cur) + 1) + ')';
+      }
+      parts.unshift(tag);
+      cur = parent;
+    }
+    return parts.join(' > ');
+  };
+}`;
+
+// Resolve a ref number (e.g. "3") to a CSS selector using the stored ref map
+function resolveSelector(input) {
+  if (/^\d+$/.test(input)) {
+    const state = loadSessionState();
+    if (!state.refMap) throw new Error('No ref map. Run: axtree -i');
+    const selector = state.refMap[input];
+    if (!selector) throw new Error(`Ref ${input} not found. Run: axtree -i to refresh.`);
+    return selector;
+  }
+  return input;
+}
+
+// --- Action cache ---
+
+const ACTION_CACHE_FILE = path.join(TMP, 'webact-action-cache.json');
+const CACHE_TTL = 48 * 60 * 60 * 1000; // 48 hours
+const CACHE_MAX_ENTRIES = 100;
+
+function loadActionCache() {
+  try { return JSON.parse(fs.readFileSync(ACTION_CACHE_FILE, 'utf8')); }
+  catch { return {}; }
+}
+
+function saveActionCache(cache) {
+  const now = Date.now();
+  for (const key of Object.keys(cache)) {
+    if (now - cache[key].timestamp > CACHE_TTL) delete cache[key];
+  }
+  const entries = Object.entries(cache).sort((a, b) => b[1].timestamp - a[1].timestamp);
+  const pruned = entries.length > CACHE_MAX_ENTRIES
+    ? Object.fromEntries(entries.slice(0, CACHE_MAX_ENTRIES))
+    : cache;
+  fs.writeFileSync(ACTION_CACHE_FILE, JSON.stringify(pruned));
+}
+
 // --- CDP Connection ---
 
 function httpGet(url) {
@@ -574,6 +646,15 @@ async function cmdConnect() {
 async function cmdNavigate(url) {
   if (!url) { console.error('Usage: webact.js navigate <url>'); process.exit(1); }
   if (!url.startsWith('http')) url = 'https://' + url;
+
+  // Clear stale ref map — new page invalidates old refs
+  const state = loadSessionState();
+  if (state.refMap) {
+    delete state.refMap;
+    delete state.refMapUrl;
+    delete state.refMapTimestamp;
+    saveSessionState(state);
+  }
 
   await withCDP(async (cdp) => {
     await cdp.send('Page.enable');
@@ -1222,8 +1303,139 @@ async function cmdClose() {
 
 // --- Tier 1: axtree, cookies, back/forward/reload, rightclick, key combos, clear, pdf ---
 
+// Helper: fetch interactive elements, generate ref map, cache results
+// Called from within a withCDP callback — receives the cdp connection
+async function fetchInteractiveElements(cdp) {
+  const INTERACTIVE_ROLES = new Set([
+    'button', 'link', 'textbox', 'searchbox', 'combobox', 'checkbox', 'radio',
+    'switch', 'slider', 'spinbutton', 'tab', 'menuitem', 'menuitemcheckbox',
+    'menuitemradio', 'option', 'listbox', 'tree', 'treeitem',
+  ]);
+
+  // Get current URL for cache key
+  const urlResult = await cdp.send('Runtime.evaluate', {
+    expression: 'location.href', returnByValue: true,
+  });
+  const currentUrl = urlResult.result.value;
+  let cacheKey;
+  try { const u = new URL(currentUrl); cacheKey = u.hostname + u.pathname; }
+  catch { cacheKey = currentUrl; }
+
+  // Check action cache
+  const actionCache = loadActionCache();
+  const cached = actionCache[cacheKey];
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    const refs = Object.entries(cached.refMap);
+    const checkRefs = refs.slice(0, Math.min(3, refs.length));
+    let valid = checkRefs.length > 0;
+    for (const [, sel] of checkRefs) {
+      try {
+        const check = await cdp.send('Runtime.evaluate', {
+          expression: `!!document.querySelector(${JSON.stringify(sel)})`,
+          returnByValue: true,
+        });
+        if (!check.result?.value) { valid = false; break; }
+      } catch { valid = false; break; }
+    }
+    if (valid) {
+      const state = loadSessionState();
+      state.refMap = cached.refMap;
+      state.refMapUrl = currentUrl;
+      state.refMapTimestamp = cached.timestamp;
+      saveSessionState(state);
+      return { elements: cached.elements, refMap: cached.refMap, output: cached.output };
+    }
+  }
+
+  // Fresh AX tree walk
+  await cdp.send('Accessibility.enable');
+  const axResult = await cdp.send('Accessibility.getFullAXTree', { depth: 8 });
+  const nodes = axResult.nodes;
+  const nodeMap = new Map();
+  for (const n of nodes) nodeMap.set(n.nodeId, n);
+
+  // Collect interactive nodes
+  const interactiveNodes = [];
+  function walk(node) {
+    const role = node.role?.value || '';
+    if (INTERACTIVE_ROLES.has(role)) interactiveNodes.push(node);
+    for (const cid of (node.childIds || [])) {
+      const child = nodeMap.get(cid);
+      if (child) walk(child);
+    }
+  }
+  if (nodes[0]) walk(nodes[0]);
+
+  // Build output text + elements array
+  const elements = [];
+  let output = '';
+  for (let i = 0; i < interactiveNodes.length; i++) {
+    const node = interactiveNodes[i];
+    const role = node.role?.value || '';
+    const name = node.name?.value || '';
+    const value = node.value?.value || '';
+    let line = `[${i + 1}] ${role}`;
+    if (name) line += ` "${name.substring(0, 80)}"`;
+    if (value) line += ` val="${value.substring(0, 40)}"`;
+    const props = {};
+    for (const p of (node.properties || [])) {
+      if (p.name === 'disabled' && p.value?.value) props.disabled = true;
+      if (p.name === 'checked') props.checked = p.value?.value;
+      if (p.name === 'expanded') props.expanded = p.value?.value;
+      if (p.name === 'selected' && p.value?.value) props.selected = true;
+    }
+    const propStr = Object.entries(props).map(([k,v]) => `${k}=${v}`).join(' ');
+    if (propStr) line += ` [${propStr}]`;
+    output += line + '\n';
+    elements.push({ role, name, value });
+  }
+  if (output.length > 6000) {
+    output = output.substring(0, 6000) + '\n... (truncated)';
+  }
+
+  // Inject selector generator and resolve CSS selectors in parallel
+  await cdp.send('Runtime.evaluate', { expression: SELECTOR_GEN_SCRIPT });
+  await cdp.send('DOM.enable');
+  const refMap = {};
+  await Promise.all(interactiveNodes.map(async (node, i) => {
+    try {
+      if (!node.backendDOMNodeId) return;
+      const resolved = await cdp.send('DOM.resolveNode', { backendNodeId: node.backendDOMNodeId });
+      if (!resolved.object?.objectId) return;
+      const sResult = await cdp.send('Runtime.callFunctionOn', {
+        objectId: resolved.object.objectId,
+        functionDeclaration: 'function() { return window.__webactGenSelector(this); }',
+        returnByValue: true,
+      });
+      if (sResult.result?.value) refMap[i + 1] = sResult.result.value;
+    } catch {}
+  }));
+
+  await cdp.send('Accessibility.disable');
+
+  // Save ref map to session state
+  const state = loadSessionState();
+  state.refMap = refMap;
+  state.refMapUrl = currentUrl;
+  state.refMapTimestamp = Date.now();
+  saveSessionState(state);
+
+  // Save to action cache
+  actionCache[cacheKey] = { refMap, elements, output, timestamp: Date.now() };
+  saveActionCache(actionCache);
+
+  return { elements, refMap, output };
+}
+
 async function cmdAxtree(selector, interactiveOnly) {
   await withCDP(async (cdp) => {
+    // Fast path: interactive-only without selector — uses cache + ref map
+    if (interactiveOnly && !selector) {
+      const data = await fetchInteractiveElements(cdp);
+      console.log(data.output || '(no interactive elements found)');
+      return;
+    }
+
     await cdp.send('Accessibility.enable');
 
     let nodes;
@@ -1348,6 +1560,42 @@ async function cmdAxtree(selector, interactiveOnly) {
     }
 
     await cdp.send('Accessibility.disable');
+  });
+}
+
+async function cmdObserve() {
+  await withCDP(async (cdp) => {
+    const data = await fetchInteractiveElements(cdp);
+    if (data.elements.length === 0) {
+      console.log('(no interactive elements found)');
+      return;
+    }
+
+    let output = '';
+    for (let i = 0; i < data.elements.length; i++) {
+      const el = data.elements[i];
+      const ref = i + 1;
+      const desc = `${el.role}${el.name ? ' "' + el.name.substring(0, 60) + '"' : ''}`;
+      let cmd;
+      switch (el.role) {
+        case 'textbox':
+        case 'searchbox':
+          cmd = `type ${ref} <text>`;
+          break;
+        case 'combobox':
+        case 'listbox':
+          cmd = `select ${ref} <value>`;
+          break;
+        case 'slider':
+        case 'spinbutton':
+          cmd = `type ${ref} <value>`;
+          break;
+        default:
+          cmd = `click ${ref}`;
+      }
+      output += `[${ref}] ${cmd}  — ${desc}\n`;
+    }
+    console.log(output.trimEnd());
   });
 }
 
@@ -1827,27 +2075,28 @@ async function dispatch(command, args) {
     case 'navigate': await cmdNavigate(args.join(' ')); break;
     case 'dom': {
       const full = args.includes('--full');
-      const selector = args.filter(a => a !== '--full').join(' ') || null;
+      const selectorArg = args.filter(a => a !== '--full').join(' ') || null;
+      const selector = selectorArg ? resolveSelector(selectorArg) : null;
       await cmdDom(selector, full);
       break;
     }
     case 'screenshot': await cmdScreenshot(); break;
-    case 'click': await cmdClick(args.join(' ')); break;
-    case 'doubleclick': await cmdDoubleClick(args.join(' ')); break;
-    case 'hover': await cmdHover(args.join(' ')); break;
-    case 'focus': await cmdFocus(args.join(' ')); break;
+    case 'click': await cmdClick(resolveSelector(args.join(' '))); break;
+    case 'doubleclick': await cmdDoubleClick(resolveSelector(args.join(' '))); break;
+    case 'hover': await cmdHover(resolveSelector(args.join(' '))); break;
+    case 'focus': await cmdFocus(resolveSelector(args.join(' '))); break;
     case 'type': {
-      const selector = args[0];
+      const selector = resolveSelector(args[0]);
       const text = args.slice(1).join(' ');
       await cmdType(selector, text);
       break;
     }
     case 'keyboard': await cmdKeyboard(args.join(' ')); break;
-    case 'select': await cmdSelect(args[0], ...args.slice(1)); break;
-    case 'upload': await cmdUpload(args[0], ...args.slice(1)); break;
-    case 'drag': await cmdDrag(args[0], args[1]); break;
+    case 'select': await cmdSelect(resolveSelector(args[0]), ...args.slice(1)); break;
+    case 'upload': await cmdUpload(resolveSelector(args[0]), ...args.slice(1)); break;
+    case 'drag': await cmdDrag(resolveSelector(args[0]), resolveSelector(args[1])); break;
     case 'dialog': await cmdDialog(args[0], args.slice(1).join(' ') || undefined); break;
-    case 'waitfor': await cmdWaitFor(args[0], args[1]); break;
+    case 'waitfor': await cmdWaitFor(resolveSelector(args[0]), args[1]); break;
     case 'waitfornav': await cmdWaitForNavigation(args[0]); break;
     case 'press': await cmdPress(args[0]); break;
     case 'scroll': await cmdScroll(args[0], args[1]); break;
@@ -1866,8 +2115,9 @@ async function dispatch(command, args) {
     case 'back': await cmdBack(); break;
     case 'forward': await cmdForward(); break;
     case 'reload': await cmdReload(); break;
-    case 'rightclick': await cmdRightClick(args.join(' ')); break;
-    case 'clear': await cmdClear(args.join(' ')); break;
+    case 'rightclick': await cmdRightClick(resolveSelector(args.join(' '))); break;
+    case 'clear': await cmdClear(resolveSelector(args.join(' '))); break;
+    case 'observe': await cmdObserve(); break;
     case 'pdf': await cmdPdf(args[0]); break;
     case 'console': await cmdConsole(args[0]); break;
     case 'block': await cmdBlock(...args); break;
@@ -1897,7 +2147,8 @@ Commands:
   reload              Reload the current page
   dom [selector]      Get compact DOM (--full for no truncation)
   axtree [selector]   Get accessibility tree (semantic roles + names)
-  axtree -i           Interactive-only: flat indexed list of actionable elements
+  axtree -i           Interactive elements with ref numbers (enables ref-based targeting)
+  observe             Show interactive elements as ready-to-use commands
   screenshot          Capture screenshot
   pdf [path]          Save page as PDF
   click <selector>    Click an element (waits up to 5s, scrolls into view)
