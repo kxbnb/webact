@@ -233,6 +233,56 @@ function createCDP(wsUrl) {
   });
 }
 
+// Compact page brief: ~200 chars instead of ~4000 for full DOM
+// Gives the agent enough to decide next step without a separate dom call
+const PAGE_BRIEF_SCRIPT = `(function() {
+  const t = document.title, u = location.href;
+  const seen = new Set();
+  const inputs = [], buttons = [], links = [];
+  document.querySelectorAll('input:not([type=hidden]),textarea,select').forEach(el => {
+    if (!el.offsetParent && getComputedStyle(el).display === 'none') return;
+    if (inputs.length >= 5) return;
+    const key = el.name || el.id || el.type;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const a = [el.tagName.toLowerCase()];
+    if (el.name) a.push('name=' + el.name);
+    if (el.type && el.type !== 'text') a.push('type=' + el.type);
+    if (el.placeholder) a.push(JSON.stringify(el.placeholder.substring(0, 40)));
+    inputs.push('[' + a.join(' ') + ']');
+  });
+  document.querySelectorAll('button,[role=button],input[type=submit]').forEach(el => {
+    if (!el.offsetParent && getComputedStyle(el).display === 'none') return;
+    if (buttons.length >= 5) return;
+    const txt = (el.textContent || el.value || '').trim().substring(0, 30);
+    if (!txt || txt.includes('{') || seen.has(txt)) return;
+    seen.add(txt);
+    buttons.push('[button ' + JSON.stringify(txt) + ']');
+  });
+  document.querySelectorAll('a[href]').forEach(el => {
+    if (!el.offsetParent) return;
+    if (links.length >= 8) return;
+    const txt = el.textContent.trim().substring(0, 25);
+    if (txt && !seen.has(txt)) { seen.add(txt); links.push(txt); }
+  });
+  const short = u.length > 80 ? u.substring(0, 80) + '...' : u;
+  let r = '--- ' + short + ' | ' + t + ' ---';
+  if (inputs.length) r += '\\n' + inputs.join(' ');
+  if (buttons.length) r += '\\n' + buttons.join(' ');
+  if (links.length) r += '\\nLinks: ' + links.join(', ');
+  return r;
+})()`;
+
+async function getPageBrief(cdp) {
+  try {
+    const result = await cdp.send('Runtime.evaluate', {
+      expression: PAGE_BRIEF_SCRIPT,
+      returnByValue: true,
+    });
+    return result.result.value || '';
+  } catch { return ''; }
+}
+
 async function withCDP(fn) {
   const tab = await connectToTab();
   // Chrome returns ws://127.0.0.1:... but in WSL2 we need the host IP
@@ -250,10 +300,9 @@ async function withCDP(fn) {
       cdp.on('Page.javascriptDialogOpening', async (params) => {
         try {
           await cdp.send('Page.handleJavaScriptDialog', { accept, promptText });
-          console.log(`Auto-${accept ? 'accepted' : 'dismissed'} ${params.type} dialog: "${params.message}"`);
+          console.log(`Auto-${accept ? 'accepted' : 'dismissed'} ${params.type}: "${params.message}"`);
         } catch {}
       });
-      // Clear the handler after attaching (one-shot)
       delete state.dialogHandler;
       saveSessionState(state);
     }
@@ -506,11 +555,7 @@ async function cmdNavigate(url) {
       if (result.result && result.result.value === 'complete') break;
     }
 
-    const titleResult = await cdp.send('Runtime.evaluate', {
-      expression: 'document.title'
-    });
-    console.log(`Navigated to: ${url}`);
-    console.log(`Title: ${titleResult.result.value}`);
+    console.log(await getPageBrief(cdp));
   });
 }
 
@@ -648,7 +693,10 @@ async function cmdClick(selector) {
       type: 'mouseReleased', x: loc.x, y: loc.y, button: 'left', clickCount: 1
     });
 
-    console.log(`Clicked <${loc.tag.toLowerCase()}> "${loc.text}" at (${Math.round(loc.x)}, ${Math.round(loc.y)})`);
+    console.log(`Clicked ${loc.tag.toLowerCase()} "${loc.text}"`);
+    // Brief pause for any triggered navigation/render, then show page state
+    await new Promise(r => setTimeout(r, 150));
+    console.log(await getPageBrief(cdp));
   });
 }
 
@@ -671,7 +719,9 @@ async function cmdDoubleClick(selector) {
       type: 'mouseReleased', x: loc.x, y: loc.y, button: 'left', clickCount: 2
     });
 
-    console.log(`Double-clicked <${loc.tag.toLowerCase()}> "${loc.text}" at (${Math.round(loc.x)}, ${Math.round(loc.y)})`);
+    console.log(`Double-clicked ${loc.tag.toLowerCase()} "${loc.text}"`);
+    await new Promise(r => setTimeout(r, 150));
+    console.log(await getPageBrief(cdp));
   });
 }
 
@@ -685,7 +735,9 @@ async function cmdHover(selector) {
       type: 'mouseMoved', x: loc.x, y: loc.y,
     });
 
-    console.log(`Hovered <${loc.tag.toLowerCase()}> "${loc.text}" at (${Math.round(loc.x)}, ${Math.round(loc.y)})`);
+    console.log(`Hovered ${loc.tag.toLowerCase()} "${loc.text}"`);
+    await new Promise(r => setTimeout(r, 150));
+    console.log(await getPageBrief(cdp));
   });
 }
 
@@ -752,6 +804,7 @@ async function cmdSelect(selector, ...values) {
     const val = result.result.value;
     if (val.error) { console.error(val.error); process.exit(1); }
     console.log(`Selected: ${val.selected.join(', ')}`);
+    console.log(await getPageBrief(cdp));
   });
 }
 
@@ -808,7 +861,8 @@ async function cmdDrag(fromSelector, toSelector) {
       type: 'mouseReleased', x: to.x, y: to.y, button: 'left', clickCount: 1,
     });
 
-    console.log(`Dragged <${from.tag.toLowerCase()}> to <${to.tag.toLowerCase()}> (${Math.round(from.x)},${Math.round(from.y)}) -> (${Math.round(to.x)},${Math.round(to.y)})`);
+    console.log(`Dragged ${from.tag.toLowerCase()} to ${to.tag.toLowerCase()}`);
+    console.log(await getPageBrief(cdp));
   });
 }
 
@@ -846,7 +900,6 @@ async function cmdKeyboard(text) {
   if (!text) { console.error('Usage: cdp.js keyboard <text>'); process.exit(1); }
 
   await withCDP(async (cdp) => {
-    // Type at the current caret position — no selector, no focus change
     for (const char of text) {
       await cdp.send('Input.dispatchKeyEvent', {
         type: 'keyDown', text: char, unmodifiedText: char,
@@ -855,8 +908,7 @@ async function cmdKeyboard(text) {
         type: 'keyUp', text: char, unmodifiedText: char,
       });
     }
-
-    console.log(`Typed "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}" at caret`);
+    console.log(`OK keyboard "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
   });
 }
 
@@ -891,8 +943,8 @@ async function cmdWaitFor(selector, timeoutMs) {
       console.error(`Element not found after ${timeout}ms: ${selector}`);
       process.exit(1);
     }
-    console.log(`Found <${val.tag}> matching ${selector}`);
-    if (val.text) console.log(`Text: ${val.text}`);
+    console.log(`Found ${val.tag} "${val.text}"`);
+    console.log(await getPageBrief(cdp));
   });
 }
 
@@ -940,8 +992,7 @@ async function cmdWaitForNavigation(timeoutMs) {
       console.error(`Page not ready after ${timeout}ms (readyState: ${val.readyState})`);
       process.exit(1);
     }
-    console.log(`Page ready: ${val.url}`);
-    console.log(`Title: ${val.title}`);
+    console.log(await getPageBrief(cdp));
   });
 }
 
@@ -970,7 +1021,12 @@ async function cmdPress(key) {
     await cdp.send('Input.dispatchKeyEvent', {
       type: 'keyUp', ...mapped, windowsVirtualKeyCode: mapped.keyCode, nativeVirtualKeyCode: mapped.keyCode,
     });
-    console.log(`Pressed: ${key}`);
+    console.log(`OK press ${key}`);
+    // Enter/Tab/Escape can trigger navigation or state changes
+    if (['enter', 'tab', 'escape'].includes(key.toLowerCase())) {
+      await new Promise(r => setTimeout(r, 150));
+      console.log(await getPageBrief(cdp));
+    }
   });
 }
 
@@ -982,7 +1038,7 @@ async function cmdScroll(direction) {
     await cdp.send('Input.dispatchMouseEvent', {
       type: 'mouseWheel', x: 200, y: 200, deltaX: 0, deltaY,
     });
-    console.log(`Scrolled ${direction}`);
+    console.log(await getPageBrief(cdp));
   });
 }
 
@@ -1179,13 +1235,16 @@ Commands:
         console.error(`Cannot read ${cmdFile}: ${e.message}`);
         process.exit(1);
       }
-      const fileCmd = cmdData.command;
-      const fileArgs = cmdData.args || [];
-      if (!fileCmd) {
-        console.error(`${cmdFile} missing "command" field`);
-        process.exit(1);
+
+      // Support command chaining: array of commands or single command
+      const commands = Array.isArray(cmdData) ? cmdData : [cmdData];
+      for (const cmd of commands) {
+        if (!cmd.command) {
+          console.error(`Missing "command" field in: ${JSON.stringify(cmd)}`);
+          process.exit(1);
+        }
+        await dispatch(cmd.command, cmd.args || []);
       }
-      await dispatch(fileCmd, fileArgs);
     } else {
       await dispatch(command, args);
     }

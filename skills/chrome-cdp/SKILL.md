@@ -21,20 +21,29 @@ All commands use `cdp.js` from this skill's base directory. The base directory i
 
 ### Running Commands (repeats)
 
-For all commands after launch, use two steps:
+For all commands after launch, write the command JSON to the command file and run:
 
-1. **Write** the command to the session's command file (the path printed by launch) using the Write tool:
-   ```
-   Write to <command-file-path>:
-   {"command": "navigate", "args": ["https://example.com"]}
-   ```
+```
+Write to <command-file-path>:
+{"command": "navigate", "args": ["https://example.com"]}
+```
+```bash
+node <base-dir>/cdp.js run <sessionId>
+```
 
-2. **Execute** with a fixed bash command (same every time for this session):
-   ```bash
-   node <base-dir>/cdp.js run <sessionId>
-   ```
+The bash command is identical every invocation — the user only approves it once.
 
-Because the bash command is identical every invocation, the user only approves it once.
+**Command chaining:** Write an array to batch multiple commands in one call:
+```
+Write to <command-file-path>:
+[
+  {"command": "click", "args": ["input[name=q]"]},
+  {"command": "keyboard", "args": ["search query"]},
+  {"command": "press", "args": ["Enter"]}
+]
+```
+
+**Auto-brief:** State-changing commands (navigate, click, hover, press Enter/Tab, scroll, select) automatically print a compact page summary. You usually don't need a separate `dom` call — the brief shows the URL, title, interactive elements, and links. Use `dom` only when you need the full page structure.
 
 ### Command Reference
 
@@ -87,47 +96,19 @@ This means two agents can work side by side in the same Chrome instance without 
 
 When given a goal, follow this loop:
 
-```dot
-digraph perceive_act {
-    rankdir=TB;
-    plan [label="PLAN\nBreak goal into steps" shape=box];
-    act [label="ACT\nExecute next step" shape=box];
-    perceive [label="PERCEIVE\nRead DOM" shape=box];
-    decide [label="DECIDE\nWhat happened?" shape=diamond];
-    done [label="REPORT\nResults to user" shape=doublecircle];
-    blocked [label="ASK USER\nLogin/CAPTCHA/2FA" shape=doublecircle];
+1. **PLAN** — Break the goal into steps. Chain predictable sequences (click → type → press Enter) into a single command array.
 
-    plan -> act;
-    act -> perceive;
-    perceive -> decide;
-    decide -> act [label="continue"];
-    decide -> done [label="goal complete"];
-    decide -> blocked [label="blocked"];
-    decide -> plan [label="need to re-plan"];
-}
-```
+2. **ACT** — Write command JSON (or array), run `node <base-dir>/cdp.js run <sessionId>`. Actions auto-print a page brief.
 
-### Step by Step
+3. **DECIDE** — Read the brief. Expected state? Continue. Login wall / CAPTCHA? Tell user. Need more detail? Use `dom`. Goal complete? Report.
 
-1. **PLAN** — Break the user's goal into high-level steps. Think about what site to visit, what actions to take, what information to extract.
-
-2. **ACT** — Write the command JSON, then run `node <base-dir>/cdp.js run <sessionId>`.
-
-3. **PERCEIVE** — Write `{"command": "dom", "args": []}` and run. This is mandatory after every action. Never chain actions without perceiving.
-
-4. **DECIDE** — Based on the DOM:
-   - Expected state? Proceed to next action.
-   - Login wall / CAPTCHA / 2FA? Stop and tell the user.
-   - Unexpected content? Re-plan.
-   - Goal complete? Report results.
-
-5. **REPEAT** until goal is achieved or you're blocked.
+4. **REPEAT** until done or blocked.
 
 ## Rules
 
 <HARD-RULES>
 
-1. **Always perceive after acting.** Never execute two actions without reading the DOM between them. Every click, type, or navigate MUST be followed by `dom`.
+1. **Read the brief after acting.** State-changing commands auto-print a page brief. Read it before deciding your next step. Use `dom` only when the brief isn't enough (e.g., you need to find a specific element's selector in a complex page).
 
 2. **DOM before screenshot.** Always try `dom` first. Only use `screenshot` if DOM output is empty/insufficient (canvas apps, image-heavy layouts).
 
