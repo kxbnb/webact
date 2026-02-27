@@ -1,20 +1,20 @@
 ---
-name: chrome-cdp
+name: webact
 description: Use when the user asks to interact with a website, browse the web, check a site, send a message, read content from a web page, or accomplish any goal that requires controlling a browser
 ---
 
-# Chrome CDP Browser Control
+# WebAct Browser Control
 
 Control Chrome directly via the Chrome DevTools Protocol. No Playwright, no MCP — raw CDP through a CLI helper.
 
 ## How to Run Commands
 
-All commands use `cdp.js` from this skill's base directory. The base directory is provided when the skill loads — use it as the path prefix.
+All commands use `webact.js` from this skill's base directory. The base directory is provided when the skill loads — use it as the path prefix.
 
 ### Session Setup (once)
 
 ```bash
-node <base-dir>/cdp.js launch
+node <base-dir>/webact.js launch
 ```
 
 This launches Chrome (or connects to an existing instance) and creates a session. All subsequent commands auto-discover the session — no session ID needed.
@@ -24,11 +24,11 @@ This launches Chrome (or connects to an existing instance) and creates a session
 Use direct CLI commands. Each is a single bash call:
 
 ```bash
-node <base-dir>/cdp.js navigate https://example.com
-node <base-dir>/cdp.js click button.submit
-node <base-dir>/cdp.js keyboard "hello world"
-node <base-dir>/cdp.js press Enter
-node <base-dir>/cdp.js dom
+node <base-dir>/webact.js navigate https://example.com
+node <base-dir>/webact.js click button.submit
+node <base-dir>/webact.js keyboard "hello world"
+node <base-dir>/webact.js press Enter
+node <base-dir>/webact.js dom
 ```
 
 **Auto-brief:** State-changing commands (navigate, click, hover, press Enter/Tab, scroll, select, waitfor) auto-print a compact page summary showing URL, title, inputs, buttons, and links. You usually don't need a separate `dom` call. Use `dom` only when you need the full page structure or a specific selector's subtree.
@@ -37,28 +37,28 @@ node <base-dir>/cdp.js dom
 
 | Command | Example |
 |---------|---------|
-| `navigate <url>` | `node cdp.js navigate https://example.com` |
-| `dom [selector] [--full]` | `node cdp.js dom` or `node cdp.js dom .results` |
-| `screenshot` | `node cdp.js screenshot` |
-| `click <selector>` | `node cdp.js click button.submit` |
-| `doubleclick <selector>` | `node cdp.js doubleclick td.cell` |
-| `hover <selector>` | `node cdp.js hover .menu-trigger` |
-| `focus <selector>` | `node cdp.js focus input[name=q]` |
-| `type <selector> <text>` | `node cdp.js type input[name=q] search query` |
-| `keyboard <text>` | `node cdp.js keyboard hello world` |
-| `select <selector> <value>` | `node cdp.js select select#country US` |
-| `upload <selector> <file>` | `node cdp.js upload input[type=file] /tmp/photo.png` |
-| `drag <from> <to>` | `node cdp.js drag .card .dropzone` |
-| `dialog <accept\|dismiss> [text]` | `node cdp.js dialog accept` |
-| `waitfor <selector> [ms]` | `node cdp.js waitfor .dropdown 5000` |
-| `waitfornav [ms]` | `node cdp.js waitfornav` |
-| `press <key>` | `node cdp.js press Enter` |
-| `scroll <up\|down>` | `node cdp.js scroll down` |
-| `eval <js>` | `node cdp.js eval document.title` |
-| `tabs` | `node cdp.js tabs` |
-| `tab <id>` | `node cdp.js tab ABC123` |
-| `newtab [url]` | `node cdp.js newtab https://example.com` |
-| `close` | `node cdp.js close` |
+| `navigate <url>` | `node webact.js navigate https://example.com` |
+| `dom [selector] [--full]` | `node webact.js dom` or `node webact.js dom .results` |
+| `screenshot` | `node webact.js screenshot` |
+| `click <selector>` | `node webact.js click button.submit` |
+| `doubleclick <selector>` | `node webact.js doubleclick td.cell` |
+| `hover <selector>` | `node webact.js hover .menu-trigger` |
+| `focus <selector>` | `node webact.js focus input[name=q]` |
+| `type <selector> <text>` | `node webact.js type input[name=q] search query` |
+| `keyboard <text>` | `node webact.js keyboard hello world` |
+| `select <selector> <value>` | `node webact.js select select#country US` |
+| `upload <selector> <file>` | `node webact.js upload input[type=file] /tmp/photo.png` |
+| `drag <from> <to>` | `node webact.js drag .card .dropzone` |
+| `dialog <accept\|dismiss> [text]` | `node webact.js dialog accept` |
+| `waitfor <selector> [ms]` | `node webact.js waitfor .dropdown 5000` |
+| `waitfornav [ms]` | `node webact.js waitfornav` |
+| `press <key>` | `node webact.js press Enter` |
+| `scroll <up\|down>` | `node webact.js scroll down` |
+| `eval <js>` | `node webact.js eval document.title` |
+| `tabs` | `node webact.js tabs` |
+| `tab <id>` | `node webact.js tab ABC123` |
+| `newtab [url]` | `node webact.js newtab https://example.com` |
+| `close` | `node webact.js close` |
 
 **`type` vs `keyboard`:** Use `type` to focus a specific input and fill it. Use `keyboard` to type at the current caret position — essential for rich text editors (Slack, Google Docs, Notion) where `type`'s focus call resets the cursor.
 
@@ -84,7 +84,7 @@ When given a goal, follow this loop:
 
 1. **PLAN** — Break the goal into steps. Chain predictable sequences (click → type → press Enter) into a single command array.
 
-2. **ACT** — Write command JSON (or array), run `node <base-dir>/cdp.js run <sessionId>`. Actions auto-print a page brief.
+2. **ACT** — Write command JSON (or array), run `node <base-dir>/webact.js run <sessionId>`. Actions auto-print a page brief.
 
 3. **DECIDE** — Read the brief. Expected state? Continue. Login wall / CAPTCHA? Tell user. Need more detail? Use `dom`. Goal complete? Report.
 
@@ -114,9 +114,9 @@ When given a goal, follow this loop:
 
 ```bash
 # Launch Chrome and get a session ID
-node <base-dir>/cdp.js launch
+node <base-dir>/webact.js launch
 # Output: Session: a1b2c3d4
-#         Command file: /tmp/cdp-command-a1b2c3d4.json  (path varies by OS)
+#         Command file: /tmp/webact-command-a1b2c3d4.json  (path varies by OS)
 ```
 
 If Chrome is not running, `launch` starts a new instance automatically. All subsequent commands auto-discover the session.
@@ -145,30 +145,30 @@ Read the DOM output and identify elements by:
 
 If a CSS selector doesn't work, use `eval` to find elements by text content:
 ```bash
-node cdp.js eval "[...document.querySelectorAll('a')].find(a => a.textContent.includes('Sign in'))?.getAttribute('href')"
+node webact.js eval "[...document.querySelectorAll('a')].find(a => a.textContent.includes('Sign in'))?.getAttribute('href')"
 ```
 
 ## Common Patterns
 
-All examples assume you've already run `node cdp.js launch`.
+All examples assume you've already run `node webact.js launch`.
 
 **Navigate and read** (navigate auto-prints brief — no separate dom needed):
 ```bash
-node cdp.js navigate https://news.ycombinator.com
+node webact.js navigate https://news.ycombinator.com
 ```
 
 **Fill a form:**
 ```bash
-node cdp.js click input[name=q]
-node cdp.js type input[name=q] search query
-node cdp.js press Enter
+node webact.js click input[name=q]
+node webact.js type input[name=q] search query
+node webact.js press Enter
 ```
 
 **Rich text editors and @mentions:**
 ```bash
-node cdp.js click .ql-editor
-node cdp.js keyboard Hello @alice
-node cdp.js waitfor [data-qa='tab_complete_ui_item'] 5000
-node cdp.js click [data-qa='tab_complete_ui_item']
-node cdp.js keyboard " check this out"
+node webact.js click .ql-editor
+node webact.js keyboard Hello @alice
+node webact.js waitfor [data-qa='tab_complete_ui_item'] 5000
+node webact.js click [data-qa='tab_complete_ui_item']
+node webact.js keyboard " check this out"
 ```

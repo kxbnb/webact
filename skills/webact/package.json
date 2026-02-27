@@ -1,6 +1,6 @@
 {
-  "name": "chrome-cdp",
-  "version": "1.8.0",
+  "name": "webact",
+  "version": "2.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {

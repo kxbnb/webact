@@ -1,20 +1,20 @@
 {
-  "name": "chrome-cdp",
+  "name": "webact",
   "owner": {
     "name": "kxbnb"
   },
   "metadata": {
-    "description": "Chrome DevTools Protocol browser control for Claude Code",
-    "version": "1.8.0"
+    "description": "Browser automation via Chrome DevTools Protocol for Claude Code",
+    "version": "2.0.0"
   },
   "plugins": [
     {
-      "name": "chrome-cdp",
+      "name": "webact",
       "description": "Control Chrome via raw CDP - browse the web, interact with pages, accomplish goals through a perceive-act loop",
-      "version": "1.8.0",
+      "version": "2.0.0",
       "source": {
         "source": "github",
-        "repo": "kxbnb/chrome-cdp"
+        "repo": "kxbnb/webact"
       }
     }
   ]

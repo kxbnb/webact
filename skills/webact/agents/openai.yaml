@@ -1,5 +1,5 @@
 interface:
-  display_name: Chrome CDP
+  display_name: WebAct
   short_description: Control any Chromium browser via DevTools Protocol
   default_prompt: Use the browser to accomplish the given goal.
 

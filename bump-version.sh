@@ -25,6 +25,6 @@ NEW="${MAJOR}.${MINOR}.${PATCH}"
 sed -i '' "s/\"version\": *\"$CURRENT\"/\"version\": \"$NEW\"/g" \
   "$DIR/.claude-plugin/plugin.json" \
   "$DIR/.claude-plugin/marketplace.json" \
-  "$DIR/skills/chrome-cdp/package.json"
+  "$DIR/skills/webact/package.json"
 
 echo "$CURRENT -> $NEW"

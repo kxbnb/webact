@@ -1,12 +1,12 @@
 {
-  "name": "chrome-cdp",
+  "name": "webact",
   "description": "Control Chrome via raw CDP - browse the web, interact with pages, accomplish goals through a perceive-act loop",
-  "version": "1.8.0",
+  "version": "2.0.0",
   "author": {
     "name": "kxbnb"
   },
-  "homepage": "https://github.com/kxbnb/chrome-cdp",
-  "repository": "https://github.com/kxbnb/chrome-cdp",
+  "homepage": "https://github.com/kxbnb/webact",
+  "repository": "https://github.com/kxbnb/webact",
   "license": "MIT",
-  "keywords": ["chrome", "cdp", "browser", "web", "automation"]
+  "keywords": ["chrome", "cdp", "browser", "web", "automation", "webact"]
 }

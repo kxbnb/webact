@@ -83,14 +83,14 @@ function wslWindowsPath(linuxPath) {
 }
 
 // --- Session state ---
-// Each agent session gets its own state file: <tmpdir>/cdp-state-<sessionId>.json
+// Each agent session gets its own state file: <tmpdir>/webact-state-<sessionId>.json
 // State tracks: { sessionId, activeTabId, tabs: [tabId, ...] }
 let currentSessionId = null;
 
-const LAST_SESSION_FILE = path.join(TMP, 'cdp-last-session');
+const LAST_SESSION_FILE = path.join(TMP, 'webact-last-session');
 
 function sessionStateFile() {
-  return path.join(TMP, `cdp-state-${currentSessionId}.json`);
+  return path.join(TMP, `webact-state-${currentSessionId}.json`);
 }
 
 function loadSessionState() {
@@ -438,8 +438,8 @@ function findBrowser() {
 }
 
 async function cmdLaunch() {
-  const userDataDir = path.join(TMP, 'cdp-chrome-profile');
-  const portFile = path.join(userDataDir, '.cdp-port');
+  const userDataDir = path.join(TMP, 'webact-chrome-profile');
+  const portFile = path.join(userDataDir, '.webact-port');
 
   // Resolve the right host for CDP connections (handles WSL2)
   if (IS_WSL) await resolveCDPHost();
@@ -541,7 +541,7 @@ async function cmdConnect() {
 }
 
 async function cmdNavigate(url) {
-  if (!url) { console.error('Usage: cdp.js navigate <url>'); process.exit(1); }
+  if (!url) { console.error('Usage: webact.js navigate <url>'); process.exit(1); }
   if (!url.startsWith('http')) url = 'https://' + url;
 
   await withCDP(async (cdp) => {
@@ -649,7 +649,7 @@ async function cmdDom(selector, full) {
 async function cmdScreenshot() {
   await withCDP(async (cdp) => {
     const result = await cdp.send('Page.captureScreenshot', { format: 'png' });
-    const outPath = path.join(TMP, `cdp-screenshot-${currentSessionId || 'default'}.png`);
+    const outPath = path.join(TMP, `webact-screenshot-${currentSessionId || 'default'}.png`);
     fs.writeFileSync(outPath, Buffer.from(result.data, 'base64'));
     console.log(`Screenshot saved to ${outPath}`);
   });
@@ -684,7 +684,7 @@ async function locateElement(cdp, selector) {
 }
 
 async function cmdClick(selector) {
-  if (!selector) { console.error('Usage: cdp.js click <selector>'); process.exit(1); }
+  if (!selector) { console.error('Usage: webact.js click <selector>'); process.exit(1); }
 
   await withCDP(async (cdp) => {
     const loc = await locateElement(cdp, selector);
@@ -704,7 +704,7 @@ async function cmdClick(selector) {
 }
 
 async function cmdDoubleClick(selector) {
-  if (!selector) { console.error('Usage: cdp.js doubleclick <selector>'); process.exit(1); }
+  if (!selector) { console.error('Usage: webact.js doubleclick <selector>'); process.exit(1); }
 
   await withCDP(async (cdp) => {
     const loc = await locateElement(cdp, selector);
@@ -729,7 +729,7 @@ async function cmdDoubleClick(selector) {
 }
 
 async function cmdHover(selector) {
-  if (!selector) { console.error('Usage: cdp.js hover <selector>'); process.exit(1); }
+  if (!selector) { console.error('Usage: webact.js hover <selector>'); process.exit(1); }
 
   await withCDP(async (cdp) => {
     const loc = await locateElement(cdp, selector);
@@ -745,7 +745,7 @@ async function cmdHover(selector) {
 }
 
 async function cmdFocus(selector) {
-  if (!selector) { console.error('Usage: cdp.js focus <selector>'); process.exit(1); }
+  if (!selector) { console.error('Usage: webact.js focus <selector>'); process.exit(1); }
 
   await withCDP(async (cdp) => {
     const result = await cdp.send('Runtime.evaluate', {
@@ -773,7 +773,7 @@ async function cmdFocus(selector) {
 }
 
 async function cmdSelect(selector, ...values) {
-  if (!selector || values.length === 0) { console.error('Usage: cdp.js select <selector> <value> [value2...]'); process.exit(1); }
+  if (!selector || values.length === 0) { console.error('Usage: webact.js select <selector> <value> [value2...]'); process.exit(1); }
 
   await withCDP(async (cdp) => {
     const result = await cdp.send('Runtime.evaluate', {
@@ -812,7 +812,7 @@ async function cmdSelect(selector, ...values) {
 }
 
 async function cmdUpload(selector, ...filePaths) {
-  if (!selector || filePaths.length === 0) { console.error('Usage: cdp.js upload <selector> <file> [file2...]'); process.exit(1); }
+  if (!selector || filePaths.length === 0) { console.error('Usage: webact.js upload <selector> <file> [file2...]'); process.exit(1); }
 
   // Resolve absolute paths
   const resolved = filePaths.map(f => path.resolve(f));
@@ -838,7 +838,7 @@ async function cmdUpload(selector, ...filePaths) {
 }
 
 async function cmdDrag(fromSelector, toSelector) {
-  if (!fromSelector || !toSelector) { console.error('Usage: cdp.js drag <from-selector> <to-selector>'); process.exit(1); }
+  if (!fromSelector || !toSelector) { console.error('Usage: webact.js drag <from-selector> <to-selector>'); process.exit(1); }
 
   await withCDP(async (cdp) => {
     const from = await locateElement(cdp, fromSelector);
@@ -870,7 +870,7 @@ async function cmdDrag(fromSelector, toSelector) {
 }
 
 async function cmdType(selector, text) {
-  if (!selector || !text) { console.error('Usage: cdp.js type <selector> <text>'); process.exit(1); }
+  if (!selector || !text) { console.error('Usage: webact.js type <selector> <text>'); process.exit(1); }
 
   await withCDP(async (cdp) => {
     // Focus the element
@@ -900,7 +900,7 @@ async function cmdType(selector, text) {
 }
 
 async function cmdKeyboard(text) {
-  if (!text) { console.error('Usage: cdp.js keyboard <text>'); process.exit(1); }
+  if (!text) { console.error('Usage: webact.js keyboard <text>'); process.exit(1); }
 
   await withCDP(async (cdp) => {
     for (const char of text) {
@@ -916,7 +916,7 @@ async function cmdKeyboard(text) {
 }
 
 async function cmdWaitFor(selector, timeoutMs) {
-  if (!selector) { console.error('Usage: cdp.js waitfor <selector> [timeout_ms]'); process.exit(1); }
+  if (!selector) { console.error('Usage: webact.js waitfor <selector> [timeout_ms]'); process.exit(1); }
   const timeout = parseInt(timeoutMs, 10) || 5000;
 
   await withCDP(async (cdp) => {
@@ -954,7 +954,7 @@ async function cmdWaitFor(selector, timeoutMs) {
 async function cmdDialog(action, promptText) {
   const validActions = ['accept', 'dismiss'];
   if (!action || !validActions.includes(action.toLowerCase())) {
-    console.error('Usage: cdp.js dialog <accept|dismiss> [prompt-text]');
+    console.error('Usage: webact.js dialog <accept|dismiss> [prompt-text]');
     console.error('Sets up auto-handling for the next dialog. Run BEFORE the action that triggers it.');
     process.exit(1);
   }
@@ -1000,7 +1000,7 @@ async function cmdWaitForNavigation(timeoutMs) {
 }
 
 async function cmdPress(key) {
-  if (!key) { console.error('Usage: cdp.js press <key>'); process.exit(1); }
+  if (!key) { console.error('Usage: webact.js press <key>'); process.exit(1); }
 
   const keyMap = {
     'enter': { key: 'Enter', code: 'Enter', keyCode: 13 },
@@ -1034,7 +1034,7 @@ async function cmdPress(key) {
 }
 
 async function cmdScroll(direction) {
-  if (!direction) { console.error('Usage: cdp.js scroll <up|down>'); process.exit(1); }
+  if (!direction) { console.error('Usage: webact.js scroll <up|down>'); process.exit(1); }
   const deltaY = direction.toLowerCase() === 'up' ? -400 : 400;
 
   await withCDP(async (cdp) => {
@@ -1046,7 +1046,7 @@ async function cmdScroll(direction) {
 }
 
 async function cmdEval(expression) {
-  if (!expression) { console.error('Usage: cdp.js eval <js-expression>'); process.exit(1); }
+  if (!expression) { console.error('Usage: webact.js eval <js-expression>'); process.exit(1); }
 
   await withCDP(async (cdp) => {
     const result = await cdp.send('Runtime.evaluate', {
@@ -1082,7 +1082,7 @@ async function cmdTabs() {
 }
 
 async function cmdTab(id) {
-  if (!id) { console.error('Usage: cdp.js tab <id>'); process.exit(1); }
+  if (!id) { console.error('Usage: webact.js tab <id>'); process.exit(1); }
   const state = loadSessionState();
   if (!(state.tabs || []).includes(id)) {
     console.error(`Tab ${id} is not owned by this session.`);
@@ -1179,7 +1179,7 @@ async function main() {
   const [,, command, ...args] = process.argv;
 
   if (!command) {
-    console.log(`Usage: cdp.js <command> [args]
+    console.log(`Usage: webact.js <command> [args]
 
 Commands:
   launch              Launch Chrome and start a session
@@ -1217,7 +1217,7 @@ Commands:
     if (command === 'run') {
       const sessionId = args[0];
       if (!sessionId) {
-        console.error('Usage: cdp.js run <sessionId>');
+        console.error('Usage: webact.js run <sessionId>');
         process.exit(1);
       }
       currentSessionId = sessionId;
@@ -1227,12 +1227,12 @@ Commands:
       if (state.port) CDP_PORT = state.port;
       if (state.host) CDP_HOST = state.host;
 
-      // Inline command: node cdp.js run <sid> navigate https://example.com
+      // Inline command: node webact.js run <sid> navigate https://example.com
       if (args.length > 1) {
         await dispatch(args[1], args.slice(2));
       } else {
         // File-based command (supports chaining via arrays)
-        const cmdFile = path.join(TMP, `cdp-command-${sessionId}.json`);
+        const cmdFile = path.join(TMP, `webact-command-${sessionId}.json`);
         let cmdData;
         try {
           cmdData = JSON.parse(fs.readFileSync(cmdFile, 'utf8'));
@@ -1258,7 +1258,7 @@ Commands:
         if (state.port) CDP_PORT = state.port;
         if (state.host) CDP_HOST = state.host;
       } catch {
-        console.error('No active session. Run: node cdp.js launch');
+        console.error('No active session. Run: node webact.js launch');
         process.exit(1);
       }
       await dispatch(command, args);
