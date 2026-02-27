@@ -102,8 +102,9 @@ node webact.js reload                  # Reload the current page
 node webact.js dom                     # Get compact DOM (~4000 chars)
 node webact.js dom <selector>          # Get DOM subtree
 node webact.js axtree                  # Get accessibility tree (semantic roles + names)
-node webact.js axtree -i               # Interactive-only: flat indexed list of actions
+node webact.js axtree -i               # Interactive elements with ref numbers
 node webact.js axtree <selector>       # Get AX tree for a specific element
+node webact.js observe                 # Show interactive elements as ready-to-use commands
 node webact.js screenshot              # Capture screenshot
 node webact.js pdf [path]              # Save page as PDF
 node webact.js click <selector>        # Click element (waits up to 5s, scrolls into view)
@@ -145,7 +146,59 @@ node webact.js close                   # Close current tab
 node webact.js run <sessionId>         # Run command from session command file
 ```
 
+**Ref-based targeting:** After `axtree -i` or `observe`, use the ref numbers directly as selectors — `click 1`, `type 3 hello`. Cached per URL.
+
 The agent workflow: `launch` prints a session ID and command file path. Write command JSON to that file, then `node webact.js run <sessionId>`.
+
+## Token Stats
+
+Each command is designed to minimize token usage while giving the agent enough context to decide its next step.
+
+| Command | Output size | Truncation limit | Notes |
+|---------|------------|-------------------|-------|
+| **brief** (auto) | ~200 chars | — | Auto-printed after state-changing commands (navigate, click, press, scroll, etc.). Shows URL, title, top 5 inputs, top 5 buttons, top 8 links, plus total element counts. |
+| **dom** | ~1,000–4,000 chars | 4,000 chars | Compact DOM — strips scripts, styles, SVGs, hidden elements, collapses whitespace. Only interactive and structural tags shown. |
+| **dom --full** | unbounded | 100,000 chars | Full DOM with no truncation. Rarely needed. |
+| **dom \<selector\>** | varies | 4,000 chars | Scoped to a subtree — significantly smaller on large pages. |
+| **axtree -i** | ~500–1,500 chars | 6,000 chars | Interactive elements only as a flat numbered list. Most token-efficient way to see what's actionable. |
+| **axtree** | ~2,000–6,000 chars | 6,000 chars | Full accessibility tree with semantic roles, names, values, and properties. |
+| **observe** | ~500–1,500 chars | — | Like `axtree -i` but formatted as ready-to-use commands. |
+| **screenshot** | ~100k+ (base64 PNG) | — | Full viewport PNG. Use as fallback — costs significantly more tokens than text commands. |
+| **pdf** | file on disk | — | Saved to disk, not returned as output. Zero token cost. |
+| **console** | varies | 200 chars/entry | Captures recent console output. Each log entry truncated to 200 chars. |
+| **console listen** | streaming | 500 chars/entry | Real-time listener with larger per-entry limit. |
+| **cookies** | varies | 60 chars/value | Cookie values truncated to 60 chars each. |
+| **eval** | varies | — | Raw JS result, no truncation. Keep expressions focused. |
+
+**Recommended flow for minimal token usage:**
+1. State-changing commands auto-print the **brief** (~200 chars) — often enough to decide next step
+2. Need to find a specific element? Use **axtree -i** (~500 tokens) over **dom** (~4,000 chars)
+3. Use **dom \<selector\>** to scope to a subtree instead of reading the whole page
+4. Reserve **screenshot** for visual-heavy pages where DOM/axtree are insufficient
+
+## vs. Playwright
+
+Playwright is a browser automation framework. WebAct is an agent skill. They solve different problems but get compared because both drive browsers.
+
+|  | **webact** | **Playwright** |
+|--|-----------|---------------|
+| **What it is** | Agent skill — the LLM decides what to do at each step | Test/automation framework — you write the script |
+| **Protocol** | Raw CDP over WebSocket | CDP + custom protocol layer |
+| **Dependencies** | 1 (`ws`, 90 KB) | ~200 MB (bundles its own Chromium) |
+| **Source** | Single file, ~2,200 lines | ~150k+ lines across packages |
+| **Uses your browser** | Yes — connects to your existing Chrome with your cookies, extensions, logins | No — launches a separate bundled browser with clean state |
+| **Agent-native** | Yes — compact DOM, accessibility tree, auto-briefs, ref-based targeting, token budgets | No — returns raw page content, no token awareness |
+| **Session model** | Isolated sessions share one Chrome instance; multiple agents work side by side | Each test gets its own browser context |
+| **Page reading** | Compact DOM (~4k chars), axtree (~500–6k chars), auto-brief (~200 chars) | Full HTML via `page.content()`, no built-in compaction |
+| **Setup** | `npm install ws` + any Chromium browser you already have | `npm install playwright && npx playwright install` |
+| **Cross-browser** | Chromium-only (Chrome, Edge, Brave, Arc, etc.) | Chromium, Firefox, WebKit |
+| **Headed mode** | Always — you see what the agent sees | Headless by default |
+| **Auth / logins** | Already signed in — uses your real browser session | Requires explicit auth setup (storage state, login flows) |
+| **Best for** | AI agents browsing the web on your behalf | Automated testing, scraping, scripting |
+
+**When to use webact:** You want an AI agent to browse the web using your actual browser — check your email, read a page, fill out a form, accomplish a goal. The agent perceives, decides, and acts. You stay logged in everywhere.
+
+**When to use Playwright:** You're writing deterministic test suites, scraping at scale, or need cross-browser coverage. You control every step in code.
 
 ## Requirements
 
