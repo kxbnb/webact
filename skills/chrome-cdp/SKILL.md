@@ -45,6 +45,8 @@ Because the bash command is identical every invocation, the user only approves i
 | `screenshot` | none | `{"command": "screenshot", "args": []}` |
 | `click` | `["<selector>"]` | `{"command": "click", "args": ["button.submit"]}` |
 | `type` | `["<selector>", "<text>"]` | `{"command": "type", "args": ["input[name=q]", "search query"]}` |
+| `keyboard` | `["<text>"]` | `{"command": "keyboard", "args": ["hello world"]}` |
+| `waitfor` | `["<selector>"]` or `["<selector>", "<ms>"]` | `{"command": "waitfor", "args": [".dropdown", "5000"]}` |
 | `press` | `["<key>"]` | `{"command": "press", "args": ["Enter"]}` |
 | `scroll` | `["up"]` or `["down"]` | `{"command": "scroll", "args": ["down"]}` |
 | `eval` | `["<js>"]` | `{"command": "eval", "args": ["document.title"]}` |
@@ -54,6 +56,12 @@ Because the bash command is identical every invocation, the user only approves i
 | `close` | none | `{"command": "close", "args": []}` |
 
 **Important:** The `args` array maps directly to command-line arguments. For `type`, the first arg is the selector and the second is the text. For `eval`, pass the entire expression as a single string in `args[0]`.
+
+**`type` vs `keyboard`:** Use `type` when you need to focus a specific input and fill it. Use `keyboard` when you need to type at the current caret position — essential for rich text editors (Slack, Google Docs, Notion) where re-focusing the container resets the cursor. A typical flow for @mentions: `click` the editor, `keyboard` to type `@name`, `waitfor` the autocomplete dropdown, then `click` the match.
+
+**`click` behavior:** `click` automatically waits up to 5s for the element to appear and scrolls it into view before clicking. No need to add manual waits before clicking dynamically-rendered elements like autocomplete dropdowns.
+
+**`waitfor` behavior:** Blocks until the selector matches an element in the DOM, then prints its tag and text content. Exits with an error if the timeout expires (default 5000ms).
 
 ### Tab Isolation
 
@@ -213,4 +221,24 @@ All examples below assume you've already launched and have a session ID. For eac
 ```
 ```json
 {"command": "dom", "args": [".results-container"]}
+```
+
+**Rich text editors and @mentions:**
+```json
+{"command": "click", "args": [".ql-editor"]}
+```
+```json
+{"command": "keyboard", "args": ["Hello "]}
+```
+```json
+{"command": "keyboard", "args": ["@alice"]}
+```
+```json
+{"command": "waitfor", "args": ["[data-qa='tab_complete_ui_item']", "5000"]}
+```
+```json
+{"command": "click", "args": ["[data-qa='tab_complete_ui_item']"]}
+```
+```json
+{"command": "keyboard", "args": [" check this out"]}
 ```

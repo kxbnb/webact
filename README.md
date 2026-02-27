@@ -100,8 +100,10 @@ node cdp.js navigate <url>          # Go to a URL
 node cdp.js dom                     # Get compact DOM (~4000 chars)
 node cdp.js dom <selector>          # Get DOM subtree
 node cdp.js screenshot              # Capture screenshot
-node cdp.js click <selector>        # Click an element
-node cdp.js type <selector> <text>  # Type into an input
+node cdp.js click <selector>        # Click an element (waits up to 5s, scrolls into view)
+node cdp.js type <selector> <text>  # Type into an input (focuses selector first)
+node cdp.js keyboard <text>         # Type at current caret position (no selector)
+node cdp.js waitfor <sel> [ms]      # Wait for element to appear (default 5000ms)
 node cdp.js press <key>             # Press a key (Enter, Tab, Escape)
 node cdp.js scroll <up|down>        # Scroll the page
 node cdp.js eval <js>               # Run JavaScript in page context

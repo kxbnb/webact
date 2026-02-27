@@ -594,22 +594,30 @@ async function cmdClick(selector) {
   if (!selector) { console.error('Usage: cdp.js click <selector>'); process.exit(1); }
 
   await withCDP(async (cdp) => {
-    // Find element center and click
-    const result = await cdp.send('Runtime.evaluate', {
+    // Wait for element to appear (up to 5s), scroll into view, then click
+    const waitResult = await cdp.send('Runtime.evaluate', {
       expression: `
-        (function() {
-          const el = document.querySelector(${JSON.stringify(selector)});
-          if (!el) return { error: 'Element not found: ${selector}' };
+        (async function() {
+          const sel = ${JSON.stringify(selector)};
+          let el;
+          for (let i = 0; i < 50; i++) {
+            el = document.querySelector(sel);
+            if (el) break;
+            await new Promise(r => setTimeout(r, 100));
+          }
+          if (!el) return { error: 'Element not found after 5s: ' + sel };
+          el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+          await new Promise(r => setTimeout(r, 50));
           const rect = el.getBoundingClientRect();
-          const x = rect.left + rect.width / 2;
-          const y = rect.top + rect.height / 2;
-          return { x, y, tag: el.tagName, text: (el.textContent || '').substring(0, 50).trim() };
+          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
+                   tag: el.tagName, text: (el.textContent || '').substring(0, 50).trim() };
         })()
       `,
       returnByValue: true,
+      awaitPromise: true,
     });
 
-    const loc = result.result.value;
+    const loc = waitResult.result.value;
     if (loc.error) { console.error(loc.error); process.exit(1); }
 
     await cdp.send('Input.dispatchMouseEvent', {
@@ -650,6 +658,60 @@ async function cmdType(selector, text) {
     }
 
     console.log(`Typed "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}" into ${selector}`);
+  });
+}
+
+async function cmdKeyboard(text) {
+  if (!text) { console.error('Usage: cdp.js keyboard <text>'); process.exit(1); }
+
+  await withCDP(async (cdp) => {
+    // Type at the current caret position — no selector, no focus change
+    for (const char of text) {
+      await cdp.send('Input.dispatchKeyEvent', {
+        type: 'keyDown', text: char, unmodifiedText: char,
+      });
+      await cdp.send('Input.dispatchKeyEvent', {
+        type: 'keyUp', text: char, unmodifiedText: char,
+      });
+    }
+
+    console.log(`Typed "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}" at caret`);
+  });
+}
+
+async function cmdWaitFor(selector, timeoutMs) {
+  if (!selector) { console.error('Usage: cdp.js waitfor <selector> [timeout_ms]'); process.exit(1); }
+  const timeout = parseInt(timeoutMs, 10) || 5000;
+
+  await withCDP(async (cdp) => {
+    const result = await cdp.send('Runtime.evaluate', {
+      expression: `
+        (async function() {
+          const sel = ${JSON.stringify(selector)};
+          const deadline = Date.now() + ${timeout};
+          while (Date.now() < deadline) {
+            const el = document.querySelector(sel);
+            if (el) {
+              const text = (el.textContent || '').substring(0, 200).trim();
+              const tag = el.tagName.toLowerCase();
+              return { found: true, tag, text };
+            }
+            await new Promise(r => setTimeout(r, 100));
+          }
+          return { found: false };
+        })()
+      `,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+
+    const val = result.result.value;
+    if (!val.found) {
+      console.error(`Element not found after ${timeout}ms: ${selector}`);
+      process.exit(1);
+    }
+    console.log(`Found <${val.tag}> matching ${selector}`);
+    if (val.text) console.log(`Text: ${val.text}`);
   });
 }
 
@@ -799,6 +861,8 @@ async function dispatch(command, args) {
       await cmdType(selector, text);
       break;
     }
+    case 'keyboard': await cmdKeyboard(args.join(' ')); break;
+    case 'waitfor': await cmdWaitFor(args[0], args[1]); break;
     case 'press': await cmdPress(args[0]); break;
     case 'scroll': await cmdScroll(args[0]); break;
     case 'eval': await cmdEval(args.join(' ')); break;
@@ -827,8 +891,10 @@ Commands:
   navigate <url>      Navigate to URL
   dom [selector]      Get compact DOM (--full for no truncation)
   screenshot          Capture screenshot
-  click <selector>    Click an element
-  type <sel> <text>   Type text into element
+  click <selector>    Click an element (waits up to 5s, scrolls into view)
+  type <sel> <text>   Type text into element (focuses selector first)
+  keyboard <text>     Type text at current caret position (no selector)
+  waitfor <sel> [ms]  Wait for element to appear (default 5000ms)
   press <key>         Press a key (Enter, Tab, Escape, etc.)
   scroll <up|down>    Scroll the page
   eval <js>           Evaluate JavaScript
