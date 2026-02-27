@@ -94,31 +94,43 @@ Each agent invocation gets its own **session** with isolated tab tracking. On `l
 The skill includes `webact.js`, a CLI wrapper around CDP:
 
 ```bash
-node webact.js launch                  # Start browser, create session, get session ID
-node webact.js run <sessionId>         # Run command from session command file
+node webact.js launch                  # Start browser, create session
 node webact.js navigate <url>          # Go to a URL
+node webact.js back                    # Go back in history
+node webact.js forward                 # Go forward in history
+node webact.js reload                  # Reload the current page
 node webact.js dom                     # Get compact DOM (~4000 chars)
 node webact.js dom <selector>          # Get DOM subtree
+node webact.js axtree                  # Get accessibility tree (semantic roles + names)
+node webact.js axtree <selector>       # Get AX tree for a specific element
 node webact.js screenshot              # Capture screenshot
-node webact.js click <selector>        # Click an element (waits up to 5s, scrolls into view)
+node webact.js pdf [path]              # Save page as PDF
+node webact.js click <selector>        # Click element (waits up to 5s, scrolls into view)
 node webact.js doubleclick <selector>  # Double-click an element
-node webact.js hover <selector>        # Hover over an element (triggers tooltips/menus)
+node webact.js rightclick <selector>   # Right-click an element (context menu)
+node webact.js hover <selector>        # Hover over an element (tooltips/menus)
 node webact.js focus <selector>        # Focus an element without clicking
-node webact.js type <selector> <text>  # Type into an input (focuses selector first)
+node webact.js clear <selector>        # Clear an input field or contenteditable
+node webact.js type <selector> <text>  # Type into an input (focuses first)
 node webact.js keyboard <text>         # Type at current caret position (no selector)
 node webact.js select <sel> <value>    # Select option(s) from a <select> dropdown
 node webact.js upload <sel> <file>     # Upload file(s) to a file input
 node webact.js drag <from> <to>        # Drag from one selector to another
 node webact.js dialog accept|dismiss   # Handle alert/confirm/prompt dialogs
-node webact.js waitfor <sel> [ms]      # Wait for element to appear (default 5000ms)
+node webact.js waitfor <sel> [ms]      # Wait for element to appear (default 5s)
 node webact.js waitfornav [ms]         # Wait for navigation to complete (default 10s)
-node webact.js press <key>             # Press a key (Enter, Tab, Escape)
+node webact.js press <key>             # Press a key or combo (Enter, Ctrl+A, Meta+C)
 node webact.js scroll <up|down>        # Scroll the page
 node webact.js eval <js>               # Run JavaScript in page context
+node webact.js cookies                 # List cookies for current page
+node webact.js cookies set <n> <v>     # Set a cookie
+node webact.js cookies delete <name>   # Delete a cookie
+node webact.js cookies clear           # Clear all cookies
 node webact.js tabs                    # List this session's tabs
 node webact.js tab <id>                # Switch to a session-owned tab
 node webact.js newtab [url]            # Open a new tab in this session
 node webact.js close                   # Close current tab
+node webact.js run <sessionId>         # Run command from session command file
 ```
 
 The agent workflow: `launch` prints a session ID and command file path. Write command JSON to that file, then `node webact.js run <sessionId>`.

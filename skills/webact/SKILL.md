@@ -38,12 +38,19 @@ node <base-dir>/webact.js dom
 | Command | Example |
 |---------|---------|
 | `navigate <url>` | `node webact.js navigate https://example.com` |
+| `back` | `node webact.js back` |
+| `forward` | `node webact.js forward` |
+| `reload` | `node webact.js reload` |
 | `dom [selector] [--full]` | `node webact.js dom` or `node webact.js dom .results` |
+| `axtree [selector]` | `node webact.js axtree` or `node webact.js axtree form` |
 | `screenshot` | `node webact.js screenshot` |
+| `pdf [path]` | `node webact.js pdf` or `node webact.js pdf /tmp/page.pdf` |
 | `click <selector>` | `node webact.js click button.submit` |
 | `doubleclick <selector>` | `node webact.js doubleclick td.cell` |
+| `rightclick <selector>` | `node webact.js rightclick .context-target` |
 | `hover <selector>` | `node webact.js hover .menu-trigger` |
 | `focus <selector>` | `node webact.js focus input[name=q]` |
+| `clear <selector>` | `node webact.js clear input[name=q]` |
 | `type <selector> <text>` | `node webact.js type input[name=q] search query` |
 | `keyboard <text>` | `node webact.js keyboard hello world` |
 | `select <selector> <value>` | `node webact.js select select#country US` |
@@ -52,9 +59,10 @@ node <base-dir>/webact.js dom
 | `dialog <accept\|dismiss> [text]` | `node webact.js dialog accept` |
 | `waitfor <selector> [ms]` | `node webact.js waitfor .dropdown 5000` |
 | `waitfornav [ms]` | `node webact.js waitfornav` |
-| `press <key>` | `node webact.js press Enter` |
+| `press <key\|combo>` | `node webact.js press Enter` or `node webact.js press Ctrl+A` |
 | `scroll <up\|down>` | `node webact.js scroll down` |
 | `eval <js>` | `node webact.js eval document.title` |
+| `cookies [get\|set\|clear\|delete]` | `node webact.js cookies` or `node webact.js cookies set name val` |
 | `tabs` | `node webact.js tabs` |
 | `tab <id>` | `node webact.js tab ABC123` |
 | `newtab [url]` | `node webact.js newtab https://example.com` |
@@ -65,6 +73,10 @@ node <base-dir>/webact.js dom
 **`click` behavior:** Waits up to 5s for the element, scrolls it into view, then clicks. No manual waits needed for dynamic elements.
 
 **`dialog` behavior:** Sets a one-shot auto-handler. Run BEFORE the action that triggers the dialog.
+
+**`axtree` vs `dom`:** The accessibility tree shows semantic roles (button, link, heading, textbox) and accessible names — better for understanding page structure. Use `dom` when you need HTML structure/selectors; use `axtree` when you need to understand what's on the page.
+
+**`press` combos:** Supports modifier keys: `Ctrl+A` (select all), `Ctrl+C` (copy), `Meta+V` (paste on Mac), `Shift+Enter`, etc. Modifiers: Ctrl, Alt, Shift, Meta/Cmd.
 
 ### Tab Isolation
 

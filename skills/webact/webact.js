@@ -1013,7 +1013,41 @@ async function cmdPress(key) {
     'arrowleft': { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 },
     'arrowright': { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
     'space': { key: ' ', code: 'Space', keyCode: 32 },
+    'home': { key: 'Home', code: 'Home', keyCode: 36 },
+    'end': { key: 'End', code: 'End', keyCode: 35 },
+    'pageup': { key: 'PageUp', code: 'PageUp', keyCode: 33 },
+    'pagedown': { key: 'PageDown', code: 'PageDown', keyCode: 34 },
   };
+
+  // Handle key combos: Ctrl+A, Shift+Enter, Meta+C, etc.
+  if (key.includes('+')) {
+    const { modifiers, key: mainKey } = parseKeyCombo(key);
+    const mapped = keyMap[mainKey.toLowerCase()] || {
+      key: mainKey.length === 1 ? mainKey : mainKey,
+      code: mainKey.length === 1 ? `Key${mainKey.toUpperCase()}` : mainKey,
+      keyCode: mainKey.length === 1 ? mainKey.toUpperCase().charCodeAt(0) : 0,
+    };
+    const modBits = (modifiers.alt ? 1 : 0) | (modifiers.ctrl ? 2 : 0) | (modifiers.meta ? 4 : 0) | (modifiers.shift ? 8 : 0);
+
+    await withCDP(async (cdp) => {
+      await cdp.send('Input.dispatchKeyEvent', {
+        type: 'keyDown', ...mapped,
+        windowsVirtualKeyCode: mapped.keyCode, nativeVirtualKeyCode: mapped.keyCode,
+        modifiers: modBits,
+      });
+      await cdp.send('Input.dispatchKeyEvent', {
+        type: 'keyUp', ...mapped,
+        windowsVirtualKeyCode: mapped.keyCode, nativeVirtualKeyCode: mapped.keyCode,
+        modifiers: modBits,
+      });
+      console.log(`OK press ${key}`);
+      if (['enter', 'tab', 'escape'].includes(mainKey.toLowerCase())) {
+        await new Promise(r => setTimeout(r, 150));
+        console.log(await getPageBrief(cdp));
+      }
+    });
+    return;
+  }
 
   const mapped = keyMap[key.toLowerCase()] || { key, code: `Key${key.toUpperCase()}`, keyCode: key.charCodeAt(0) };
 
@@ -1129,6 +1163,306 @@ async function cmdClose() {
   }
 }
 
+// --- Tier 1: axtree, cookies, back/forward/reload, rightclick, key combos, clear, pdf ---
+
+async function cmdAxtree(selector) {
+  await withCDP(async (cdp) => {
+    await cdp.send('Accessibility.enable');
+
+    let nodes;
+    if (selector) {
+      // Get AX tree for a specific element
+      const objResult = await cdp.send('Runtime.evaluate', {
+        expression: `document.querySelector(${JSON.stringify(selector)})`,
+      });
+      if (!objResult.result.objectId) {
+        console.error(`Element not found: ${selector}`);
+        process.exit(1);
+      }
+      const result = await cdp.send('Accessibility.queryAXTree', {
+        objectId: objResult.result.objectId,
+      });
+      nodes = result.nodes;
+    } else {
+      const result = await cdp.send('Accessibility.getFullAXTree', { depth: 8 });
+      nodes = result.nodes;
+    }
+
+    // Build compact YAML-like output from AX tree
+    const SKIP_ROLES = new Set(['InlineTextBox', 'LineBreak']);
+    const PASS_THROUGH_ROLES = new Set(['none', 'generic']); // traverse but don't print
+    const nodeMap = new Map();
+    for (const n of nodes) nodeMap.set(n.nodeId, n);
+
+    function formatNode(node, depth) {
+      const role = node.role?.value || '';
+      if (SKIP_ROLES.has(role)) return '';
+
+      const name = node.name?.value || '';
+      const value = node.value?.value || '';
+      const isPassThrough = PASS_THROUGH_ROLES.has(role) && !name;
+
+      let out = '';
+
+      if (!isPassThrough) {
+        // Skip StaticText if parent already shows the name
+        if (role === 'StaticText') {
+          // Only show if it adds info not already in parent
+          const indent = '  '.repeat(Math.min(depth, 6));
+          if (name.length > 80) {
+            out += `${indent}- text "${name.substring(0, 80)}..."\n`;
+          }
+          // Short static text is usually captured in parent's name — skip
+          return out;
+        }
+
+        const indent = '  '.repeat(Math.min(depth, 6));
+        let line = `${indent}- ${role}`;
+        if (name) line += ` "${name.substring(0, 80)}"`;
+        if (value) line += ` value="${value.substring(0, 60)}"`;
+
+        // Add useful properties
+        const props = {};
+        for (const p of (node.properties || [])) {
+          if (p.name === 'disabled' && p.value?.value) props.disabled = true;
+          if (p.name === 'required' && p.value?.value) props.required = true;
+          if (p.name === 'checked') props.checked = p.value?.value;
+          if (p.name === 'expanded') props.expanded = p.value?.value;
+          if (p.name === 'selected' && p.value?.value) props.selected = true;
+        }
+        const propStr = Object.entries(props).map(([k,v]) => `${k}=${v}`).join(' ');
+        if (propStr) line += ` [${propStr}]`;
+
+        out += line + '\n';
+      }
+
+      // Process children (pass-through nodes don't increase depth)
+      const childIds = node.childIds || [];
+      for (const cid of childIds) {
+        const child = nodeMap.get(cid);
+        if (child) out += formatNode(child, isPassThrough ? depth : depth + 1);
+      }
+      return out;
+    }
+
+    // Find root node
+    const root = nodes[0];
+    let output = '';
+    if (root) {
+      output = formatNode(root, 0);
+    }
+
+    // Truncate if too long
+    if (output.length > 6000) {
+      output = output.substring(0, 6000) + '\n... (truncated)';
+    }
+
+    console.log(output || '(empty accessibility tree)');
+    await cdp.send('Accessibility.disable');
+  });
+}
+
+async function cmdCookies(action, ...args) {
+  if (!action) {
+    // Default: get all cookies for current page
+    action = 'get';
+  }
+
+  switch (action.toLowerCase()) {
+    case 'get': {
+      await withCDP(async (cdp) => {
+        const result = await cdp.send('Network.getCookies');
+        if (result.cookies.length === 0) {
+          console.log('No cookies.');
+          return;
+        }
+        for (const c of result.cookies) {
+          const flags = [];
+          if (c.httpOnly) flags.push('httpOnly');
+          if (c.secure) flags.push('secure');
+          if (c.session) flags.push('session');
+          const exp = c.expires > 0 ? new Date(c.expires * 1000).toISOString().split('T')[0] : '';
+          console.log(`${c.name}=${c.value.substring(0, 60)}${c.value.length > 60 ? '...' : ''} (${c.domain}${exp ? ' exp:' + exp : ''} ${flags.join(' ')})`);
+        }
+      });
+      break;
+    }
+    case 'set': {
+      if (args.length < 2) {
+        console.error('Usage: webact.js cookies set <name> <value> [domain]');
+        process.exit(1);
+      }
+      const [name, value, domain] = args;
+      await withCDP(async (cdp) => {
+        const cookieDomain = domain || await cdp.send('Runtime.evaluate', {
+          expression: 'location.hostname', returnByValue: true,
+        }).then(r => r.result.value);
+
+        await cdp.send('Network.setCookie', {
+          name, value, domain: cookieDomain, path: '/',
+        });
+        console.log(`Cookie set: ${name}=${value.substring(0, 40)} (${cookieDomain})`);
+      });
+      break;
+    }
+    case 'clear': {
+      await withCDP(async (cdp) => {
+        await cdp.send('Network.clearBrowserCookies');
+        console.log('All cookies cleared.');
+      });
+      break;
+    }
+    case 'delete': {
+      if (!args[0]) {
+        console.error('Usage: webact.js cookies delete <name> [domain]');
+        process.exit(1);
+      }
+      await withCDP(async (cdp) => {
+        const domain = args[1] || await cdp.send('Runtime.evaluate', {
+          expression: 'location.hostname', returnByValue: true,
+        }).then(r => r.result.value);
+
+        await cdp.send('Network.deleteCookies', { name: args[0], domain });
+        console.log(`Deleted cookie: ${args[0]} (${domain})`);
+      });
+      break;
+    }
+    default:
+      console.error('Usage: webact.js cookies [get|set|clear|delete] [args]');
+      process.exit(1);
+  }
+}
+
+async function cmdBack() {
+  await withCDP(async (cdp) => {
+    const nav = await cdp.send('Page.getNavigationHistory');
+    if (nav.currentIndex <= 0) {
+      console.error('No previous page in history.');
+      process.exit(1);
+    }
+    const entry = nav.entries[nav.currentIndex - 1];
+    await cdp.send('Page.navigateToHistoryEntry', { entryId: entry.id });
+    await new Promise(r => setTimeout(r, 500));
+    console.log(await getPageBrief(cdp));
+  });
+}
+
+async function cmdForward() {
+  await withCDP(async (cdp) => {
+    const nav = await cdp.send('Page.getNavigationHistory');
+    if (nav.currentIndex >= nav.entries.length - 1) {
+      console.error('No next page in history.');
+      process.exit(1);
+    }
+    const entry = nav.entries[nav.currentIndex + 1];
+    await cdp.send('Page.navigateToHistoryEntry', { entryId: entry.id });
+    await new Promise(r => setTimeout(r, 500));
+    console.log(await getPageBrief(cdp));
+  });
+}
+
+async function cmdReload() {
+  await withCDP(async (cdp) => {
+    await cdp.send('Page.reload');
+    // Wait for load
+    const start = Date.now();
+    while (Date.now() - start < 15000) {
+      await new Promise(r => setTimeout(r, 300));
+      const result = await cdp.send('Runtime.evaluate', {
+        expression: 'document.readyState'
+      });
+      if (result.result && result.result.value === 'complete') break;
+    }
+    console.log(await getPageBrief(cdp));
+  });
+}
+
+async function cmdRightClick(selector) {
+  if (!selector) { console.error('Usage: webact.js rightclick <selector>'); process.exit(1); }
+
+  await withCDP(async (cdp) => {
+    const loc = await locateElement(cdp, selector);
+
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed', x: loc.x, y: loc.y, button: 'right', clickCount: 1
+    });
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x: loc.x, y: loc.y, button: 'right', clickCount: 1
+    });
+
+    console.log(`Right-clicked ${loc.tag.toLowerCase()} "${loc.text}"`);
+    await new Promise(r => setTimeout(r, 150));
+    console.log(await getPageBrief(cdp));
+  });
+}
+
+async function cmdClear(selector) {
+  if (!selector) { console.error('Usage: webact.js clear <selector>'); process.exit(1); }
+
+  await withCDP(async (cdp) => {
+    const result = await cdp.send('Runtime.evaluate', {
+      expression: `
+        (async function() {
+          const sel = ${JSON.stringify(selector)};
+          let el;
+          for (let i = 0; i < 50; i++) {
+            el = document.querySelector(sel);
+            if (el) break;
+            await new Promise(r => setTimeout(r, 100));
+          }
+          if (!el) return { error: 'Element not found after 5s: ' + sel };
+          el.focus();
+          if ('value' in el) {
+            el.value = '';
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          } else if (el.isContentEditable) {
+            el.textContent = '';
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          return { tag: el.tagName };
+        })()
+      `,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    const val = result.result.value;
+    if (val.error) { console.error(val.error); process.exit(1); }
+    console.log(`Cleared ${val.tag.toLowerCase()} ${selector}`);
+  });
+}
+
+async function cmdPdf(outputPath) {
+  const outFile = outputPath || path.join(TMP, `webact-page-${currentSessionId || 'default'}.pdf`);
+
+  await withCDP(async (cdp) => {
+    const result = await cdp.send('Page.printToPDF', {
+      printBackground: true,
+      preferCSSPageSize: true,
+    });
+    fs.writeFileSync(outFile, Buffer.from(result.data, 'base64'));
+    console.log(`PDF saved to ${outFile}`);
+  });
+}
+
+// Parse key combo strings like "Ctrl+A", "Shift+Enter", "Meta+C"
+function parseKeyCombo(combo) {
+  const parts = combo.split('+');
+  const modifiers = { ctrl: false, alt: false, shift: false, meta: false };
+  let key = '';
+
+  for (const part of parts) {
+    const lower = part.toLowerCase();
+    if (lower === 'ctrl' || lower === 'control') modifiers.ctrl = true;
+    else if (lower === 'alt' || lower === 'option') modifiers.alt = true;
+    else if (lower === 'shift') modifiers.shift = true;
+    else if (lower === 'meta' || lower === 'cmd' || lower === 'command') modifiers.meta = true;
+    else key = part;
+  }
+
+  return { modifiers, key };
+}
+
 // --- Command dispatch ---
 
 async function dispatch(command, args) {
@@ -1167,6 +1501,14 @@ async function dispatch(command, args) {
     case 'tab': await cmdTab(args[0]); break;
     case 'newtab': await cmdNewTab(args.join(' ') || undefined); break;
     case 'close': await cmdClose(); break;
+    case 'axtree': await cmdAxtree(args.join(' ') || null); break;
+    case 'cookies': await cmdCookies(args[0], ...args.slice(1)); break;
+    case 'back': await cmdBack(); break;
+    case 'forward': await cmdForward(); break;
+    case 'reload': await cmdReload(); break;
+    case 'rightclick': await cmdRightClick(args.join(' ')); break;
+    case 'clear': await cmdClear(args.join(' ')); break;
+    case 'pdf': await cmdPdf(args[0]); break;
     default:
       console.error(`Unknown command: ${command}`);
       process.exit(1);
@@ -1184,12 +1526,19 @@ async function main() {
 Commands:
   launch              Launch Chrome and start a session
   navigate <url>      Navigate to URL
+  back                Go back in history
+  forward             Go forward in history
+  reload              Reload the current page
   dom [selector]      Get compact DOM (--full for no truncation)
+  axtree [selector]   Get accessibility tree (semantic roles + names)
   screenshot          Capture screenshot
+  pdf [path]          Save page as PDF
   click <selector>    Click an element (waits up to 5s, scrolls into view)
   doubleclick <sel>   Double-click an element
+  rightclick <sel>    Right-click an element (context menu)
   hover <selector>    Hover over an element (triggers tooltips/menus)
   focus <selector>    Focus an element without clicking
+  clear <selector>    Clear an input field or contenteditable
   type <sel> <text>   Type text into element (focuses selector first)
   keyboard <text>     Type text at current caret position (no selector)
   select <sel> <val>  Select option(s) from a <select> by value or label
@@ -1198,9 +1547,10 @@ Commands:
   dialog <accept|dismiss> [text]  Handle alert/confirm/prompt dialog
   waitfor <sel> [ms]  Wait for element to appear (default 5000ms)
   waitfornav [ms]     Wait for page navigation to complete (default 10000ms)
-  press <key>         Press a key (Enter, Tab, Escape, etc.)
+  press <key>         Press a key or combo (Enter, Ctrl+A, Meta+C, etc.)
   scroll <up|down>    Scroll the page
   eval <js>           Evaluate JavaScript
+  cookies [get|set|clear|delete]  Manage browser cookies
   tabs                List this session's tabs
   tab <id>            Switch to a session-owned tab
   newtab [url]        Open a new tab in this session
