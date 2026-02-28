@@ -5,7 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>webact - token-efficient browser control for AI agents</title>
 <meta name="description" content="Give your AI agent a browser. 196 KB, zero dependencies, 98% fewer tokens than alternatives. Raw CDP over WebSocket.">
+<link rel="icon" href="favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="webact-icon-dark.svg">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0c0d10">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -964,14 +971,16 @@ document.querySelectorAll('.bar-group').forEach(el => barObserver.observe(el));
 
 // Light/dark mode toggle
 const toggle = document.getElementById('modeToggle');
-const favicon = document.querySelector('link[rel="icon"]');
+const svgFavicon = document.querySelector('link[rel="icon"][type="image/svg+xml"]');
 const logoIcon = document.querySelector('.logo-icon');
+const themeColor = document.querySelector('meta[name="theme-color"]');
 
 function setMode(light) {
   document.documentElement.classList.toggle('light', light);
   const icon = light ? 'webact-icon-light.svg' : 'webact-icon-dark.svg';
-  favicon.href = icon;
+  svgFavicon.href = icon;
   logoIcon.src = icon;
+  themeColor.content = light ? '#f8f7f4' : '#0c0d10';
   localStorage.setItem('webact-mode', light ? 'light' : 'dark');
 }
 
