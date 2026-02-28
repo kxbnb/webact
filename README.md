@@ -172,7 +172,7 @@ Each command is designed to minimize token usage while giving the agent enough c
 
 |  | **webact** | **agent-browser** |
 |--|-----------|------------------|
-| **What it is** | Agent skill — raw CDP, single file | Agent CLI — Playwright wrapper with snapshot system |
+| **What it is** | Browser CLI for agents — raw CDP, single file | Browser CLI for agents — Playwright wrapper with snapshot system |
 | **Protocol** | Raw CDP over WebSocket | Playwright (CDP + custom protocol layer) |
 | **Install size** | 196 KB (bundled, zero deps) | ~89 MB node_modules + 162 MB Chromium download |
 | **Source** | Single file, ~2,200 lines | ~9,600 lines across dist/ + Playwright dependency |
@@ -212,7 +212,7 @@ Playwright is a browser automation framework. WebAct is an agent skill. They sol
 
 |  | **webact** | **Playwright** |
 |--|-----------|---------------|
-| **What it is** | Agent skill — the LLM decides what to do at each step | Test/automation framework — you write the script |
+| **What it is** | Browser CLI for agents — the LLM decides what to do at each step | Test/automation framework — you write the script |
 | **Protocol** | Raw CDP over WebSocket | CDP + custom protocol layer |
 | **Dependencies** | 0 (bundled) | ~200 MB (bundles its own Chromium) |
 | **Source** | Single file, ~2,200 lines | ~150k+ lines across packages |
