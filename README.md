@@ -166,28 +166,25 @@ Each command is designed to minimize token usage while giving the agent enough c
 3. Use **dom \<selector\>** to scope to a subtree instead of reading the whole page
 4. Reserve **screenshot** for visual-heavy pages where DOM/axtree are insufficient
 
-## vs. agent-browser
+## vs. Playwright-based tools
 
-[agent-browser](https://github.com/vercel-labs/agent-browser) is Vercel's browser automation CLI for AI agents. It wraps Playwright and adds an accessibility snapshot system with refs. Both tools aim to give LLMs browser control - here's how they compare.
+Several tools give AI agents browser control on top of Playwright: [agent-browser](https://github.com/vercel-labs/agent-browser) (Vercel), [Playwright MCP](https://github.com/microsoft/playwright-mcp) (Microsoft), [Stagehand](https://github.com/browserbase/stagehand) (Browserbase), and [Browser Use](https://github.com/browser-use/browser-use). They share the same Playwright foundation - bundled Chromium, accessibility tree snapshots, ~200 MB+ install. Comparison measured against agent-browser; output sizes are representative of the family.
 
-|  | **webact** | **agent-browser** |
-|--|-----------|------------------|
-| **What it is** | Browser CLI for agents - raw CDP, single file | Browser CLI for agents - Rust CLI + Node.js daemon + Playwright |
-| **Architecture** | CLI connects directly to Chrome via CDP WebSocket | Rust CLI &rarr; Unix socket &rarr; Node.js daemon &rarr; Playwright &rarr; browser |
-| **Install size** | 196 KB (bundled, zero deps) | ~89 MB node_modules + 162 MB Chromium download |
-| **Source** | Single file, ~2,200 lines | ~9,600 lines across dist/ + Playwright dependency |
-| **Setup** | Plugin install or copy - no npm install needed | `npm install agent-browser && agent-browser install` (downloads Chromium) |
+|  | **webact** | **Playwright-based tools** |
+|--|-----------|--------------------------|
+| **What it is** | Browser CLI for agents - raw CDP, single file | CLI / MCP server / SDK wrapping Playwright |
+| **Architecture** | CLI connects directly to Chrome via CDP WebSocket | CLI/SDK &rarr; IPC &rarr; Playwright &rarr; bundled Chromium |
+| **Install size** | 196 KB (bundled, zero deps) | ~200 MB+ (node_modules + Chromium download) |
+| **Setup** | Plugin install or copy - no npm install needed | npm install + browser download |
 | **Uses your browser** | Yes - your Chrome, your cookies, your logins | No - launches bundled Chromium with clean state |
-| **Headed mode** | Always - you see what the agent sees | Headless by default (`--headed` flag to see) |
-| **Auth / logins** | Already signed in - uses your real browser session | Requires auth vault, state persistence, or login flows |
-| **Skill prompt size** | ~10 KB | ~19 KB |
-| **Session model** | Isolated sessions share one Chrome instance | Daemon process with named sessions |
+| **Headed mode** | Always - you see what the agent sees | Headless by default |
+| **Auth / logins** | Already signed in - uses your real browser session | Requires auth setup, state persistence, or login flows |
 
 ### Token comparison (same pages, measured output)
 
-Tested on the same pages at the same time. Chars shown; divide by ~4 for approximate tokens.
+Tested on the same pages at the same time using agent-browser (representative of Playwright-based output). Chars shown; divide by ~4 for approximate tokens.
 
-| Scenario | **webact** | **agent-browser** | Savings | Page |
+| Scenario | **webact** | **Playwright-based*** | Savings | Page |
 |----------|-----------|------------------|---------|------|
 | **Navigate + see page** | `navigate` = 186 chars | `open` + `snapshot -i` = 7,974 chars | **98%** | Hacker News |
 | **Navigate + see page** | `navigate` = 756 chars | `open` + `snapshot -i` = 8,486 chars | **91%** | GitHub repo |
@@ -204,31 +201,7 @@ For interactive elements, both tools offer a flat list with refs. webact's `axtr
 
 **When to use webact:** You want zero-setup browser control using your actual logged-in Chrome, with minimal token overhead. One file, no downloads.
 
-**When to use agent-browser:** You need headless Chromium, auth vaults, device emulation, network mocking, visual diffing, or iOS simulator support. You're OK with the install size and Playwright dependency.
-
-## vs. Playwright
-
-Playwright is a browser automation framework. WebAct is an agent skill. They solve different problems but get compared because both drive browsers.
-
-|  | **webact** | **Playwright** |
-|--|-----------|---------------|
-| **What it is** | Browser CLI for agents - the LLM decides what to do at each step | Test/automation framework - you write the script |
-| **Protocol** | Raw CDP over WebSocket | CDP + custom protocol layer |
-| **Dependencies** | 0 (bundled) | ~200 MB (bundles its own Chromium) |
-| **Source** | Single file, ~2,200 lines | ~150k+ lines across packages |
-| **Uses your browser** | Yes - connects to your existing Chrome with your cookies, extensions, logins | No - launches a separate bundled browser with clean state |
-| **Agent-native** | Yes - compact DOM, accessibility tree, auto-briefs, ref-based targeting, token budgets | No - returns raw page content, no token awareness |
-| **Session model** | Isolated sessions share one Chrome instance; multiple agents work side by side | Each test gets its own browser context |
-| **Page reading** | Compact DOM (~4k chars), axtree (~500–6k chars), auto-brief (~200 chars) | Full HTML via `page.content()`, no built-in compaction |
-| **Setup** | Any Chromium browser you already have | `npm install playwright && npx playwright install` |
-| **Cross-browser** | Chromium-only (Chrome, Edge, Brave, Arc, etc.) | Chromium, Firefox, WebKit |
-| **Headed mode** | Always - you see what the agent sees | Headless by default |
-| **Auth / logins** | Already signed in - uses your real browser session | Requires explicit auth setup (storage state, login flows) |
-| **Best for** | AI agents browsing the web on your behalf | Automated testing, scraping, scripting |
-
-**When to use webact:** You want an AI agent to browse the web using your actual browser - check your email, read a page, fill out a form, accomplish a goal. The agent perceives, decides, and acts. You stay logged in everywhere.
-
-**When to use Playwright:** You're writing deterministic test suites, scraping at scale, or need cross-browser coverage. You control every step in code.
+**When to use Playwright-based tools:** You need headless Chromium, cloud browser infra, device emulation, network mocking, cross-browser support, or iOS simulator. You're OK with the install size and Playwright dependency.
 
 ## Requirements
 
