@@ -187,14 +187,14 @@ Each command is designed to minimize token usage while giving the agent enough c
 
 Tested on the same pages at the same time. Chars shown; divide by ~4 for approximate tokens.
 
-| Scenario | **webact** | **agent-browser** | Page |
-|----------|-----------|------------------|------|
-| **Navigate + see page** | `navigate` = 186 chars | `open` + `snapshot -i` = 7,974 chars | Hacker News |
-| **Navigate + see page** | `navigate` = 756 chars | `open` + `snapshot -i` = 8,486 chars | GitHub repo |
-| **Full page read** | `dom` = 4,051 chars | `snapshot` = 46,565 chars | Hacker News |
-| **Full page read** | `dom` = 4,049 chars | `snapshot` = 104,890 chars | GitHub repo |
-| **Interactive elements** | `axtree -i` = 5,997 chars | `snapshot -i` = 7,901 chars | Hacker News |
-| **Interactive elements** | `axtree -i` = 6,019 chars | `snapshot -i` = 8,337 chars | GitHub repo |
+| Scenario | **webact** | **agent-browser** | Savings | Page |
+|----------|-----------|------------------|---------|------|
+| **Navigate + see page** | `navigate` = 186 chars | `open` + `snapshot -i` = 7,974 chars | **98%** | Hacker News |
+| **Navigate + see page** | `navigate` = 756 chars | `open` + `snapshot -i` = 8,486 chars | **91%** | GitHub repo |
+| **Full page read** | `dom` = 4,051 chars | `snapshot` = 46,565 chars | **91%** | Hacker News |
+| **Full page read** | `dom` = 4,049 chars | `snapshot` = 104,890 chars | **96%** | GitHub repo |
+| **Interactive elements** | `axtree -i` = 5,997 chars | `snapshot -i` = 7,901 chars | **24%** | Hacker News |
+| **Interactive elements** | `axtree -i` = 6,019 chars | `snapshot -i` = 8,337 chars | **28%** | GitHub repo |
 
 webact's `navigate` auto-prints a brief with page summary, inputs, links, and element counts - enough to decide the next step in one call. agent-browser's `open` only prints URL and title, so the agent always needs a follow-up `snapshot` to see the page.
 
