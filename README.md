@@ -20,11 +20,6 @@ claude plugin marketplace add kxbnb/webact
 claude plugin install webact@webact
 ```
 
-Then install the npm dependency (one-time):
-```bash
-cd ~/.claude/plugins/cache/webact/webact/*/skills/webact && npm install
-```
-
 ### OpenAI Codex
 
 From inside Codex:
@@ -41,7 +36,6 @@ Or manually:
 ```bash
 git clone https://github.com/kxbnb/webact.git
 cp -r webact/skills/webact ~/.codex/skills/webact
-cd ~/.codex/skills/webact && npm install
 ```
 
 > **Note:** Codex's sandbox blocks local networking by default. To allow CDP connections, add a rule to allow `node` access to `localhost` on the CDP port (auto-discovered at launch), or run with `--full-auto` mode.
@@ -52,7 +46,6 @@ Drop the skill into your project:
 ```bash
 git clone https://github.com/kxbnb/webact.git /tmp/webact
 cp -r /tmp/webact/skills/webact .agents/skills/webact
-cd .agents/skills/webact && npm install
 ```
 
 Any tool supporting the [Agent Skills spec](https://agentskills.io) will auto-discover it from `.agents/skills/`.
@@ -181,13 +174,13 @@ Playwright is a browser automation framework. WebAct is an agent skill. They sol
 |--|-----------|---------------|
 | **What it is** | Agent skill — the LLM decides what to do at each step | Test/automation framework — you write the script |
 | **Protocol** | Raw CDP over WebSocket | CDP + custom protocol layer |
-| **Dependencies** | 1 (`ws`, 90 KB) | ~200 MB (bundles its own Chromium) |
+| **Dependencies** | 0 (bundled) | ~200 MB (bundles its own Chromium) |
 | **Source** | Single file, ~2,200 lines | ~150k+ lines across packages |
 | **Uses your browser** | Yes — connects to your existing Chrome with your cookies, extensions, logins | No — launches a separate bundled browser with clean state |
 | **Agent-native** | Yes — compact DOM, accessibility tree, auto-briefs, ref-based targeting, token budgets | No — returns raw page content, no token awareness |
 | **Session model** | Isolated sessions share one Chrome instance; multiple agents work side by side | Each test gets its own browser context |
 | **Page reading** | Compact DOM (~4k chars), axtree (~500–6k chars), auto-brief (~200 chars) | Full HTML via `page.content()`, no built-in compaction |
-| **Setup** | `npm install ws` + any Chromium browser you already have | `npm install playwright && npx playwright install` |
+| **Setup** | Any Chromium browser you already have | `npm install playwright && npx playwright install` |
 | **Cross-browser** | Chromium-only (Chrome, Edge, Brave, Arc, etc.) | Chromium, Firefox, WebKit |
 | **Headed mode** | Always — you see what the agent sees | Headless by default |
 | **Auth / logins** | Already signed in — uses your real browser session | Requires explicit auth setup (storage state, login flows) |
@@ -201,7 +194,6 @@ Playwright is a browser automation framework. WebAct is an agent skill. They sol
 
 - Any Chromium-based browser: Google Chrome, Microsoft Edge, Brave, Arc, Vivaldi, Opera, or Chromium
 - Node.js
-- `ws` npm package (installed automatically)
 
 Auto-detected on macOS, Linux, Windows, and WSL (finds the Windows host browser automatically). Set `CHROME_PATH` to override.
 

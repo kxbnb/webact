@@ -8,11 +8,7 @@ The `webact` skill is in `skills/webact/`. It lets you control any Chromium-base
 
 ## Setup
 
-Install the npm dependency before first use:
-
-```bash
-cd skills/webact && npm install
-```
+No setup required — all dependencies are bundled.
 
 ## Sandbox Note
 

@@ -143,8 +143,6 @@ When given a goal, follow this loop:
 
 ## Getting Started
 
-**Important:** Before first use, install dependencies: `cd <base-dir> && npm install`
-
 ```bash
 # Launch Chrome and get a session ID
 node <base-dir>/webact.js launch
