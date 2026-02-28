@@ -1,4 +1,4 @@
-# webact
+# webact - token-efficient browser control for AI agents
 
 A highly token efficient agent skill that lets you control any Chromium-based browser via the Chrome DevTools Protocol. Works with Claude Code, OpenAI Codex, and any tool supporting the [Agent Skills](https://agentskills.io) spec. Give the agent a goal - "check my inbox", "top stories on Hacker News", "search for flights" - and it drives the browser to get it done.
 
