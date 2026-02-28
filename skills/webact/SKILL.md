@@ -5,11 +5,11 @@ description: Use when the user asks to interact with a website, browse the web, 
 
 # WebAct Browser Control
 
-Control Chrome directly via the Chrome DevTools Protocol. No Playwright, no MCP — raw CDP through a CLI helper.
+Control Chrome directly via the Chrome DevTools Protocol. No Playwright, no MCP - raw CDP through a CLI helper.
 
 ## How to Run Commands
 
-All commands use `webact.js` from this skill's base directory. The base directory is provided when the skill loads — use it as the path prefix.
+All commands use `webact.js` from this skill's base directory. The base directory is provided when the skill loads - use it as the path prefix.
 
 ### Session Setup (once)
 
@@ -17,7 +17,7 @@ All commands use `webact.js` from this skill's base directory. The base director
 node <base-dir>/webact.js launch
 ```
 
-This launches Chrome (or connects to an existing instance) and creates a session. All subsequent commands auto-discover the session — no session ID needed.
+This launches Chrome (or connects to an existing instance) and creates a session. All subsequent commands auto-discover the session - no session ID needed.
 
 ### Running Commands
 
@@ -75,15 +75,15 @@ node <base-dir>/webact.js dom
 | `newtab [url]` | `node webact.js newtab https://example.com` |
 | `close` | `node webact.js close` |
 
-**`type` vs `keyboard`:** Use `type` to focus a specific input and fill it. Use `keyboard` to type at the current caret position — essential for rich text editors (Slack, Google Docs, Notion) where `type`'s focus call resets the cursor.
+**`type` vs `keyboard`:** Use `type` to focus a specific input and fill it. Use `keyboard` to type at the current caret position - essential for rich text editors (Slack, Google Docs, Notion) where `type`'s focus call resets the cursor.
 
 **`click` behavior:** Waits up to 5s for the element, scrolls it into view, then clicks. No manual waits needed for dynamic elements.
 
 **`dialog` behavior:** Sets a one-shot auto-handler. Run BEFORE the action that triggers the dialog.
 
-**`axtree` vs `dom`:** The accessibility tree shows semantic roles (button, link, heading, textbox) and accessible names — better for understanding page structure. Use `dom` when you need HTML structure/selectors; use `axtree` when you need to understand what's on the page.
+**`axtree` vs `dom`:** The accessibility tree shows semantic roles (button, link, heading, textbox) and accessible names - better for understanding page structure. Use `dom` when you need HTML structure/selectors; use `axtree` when you need to understand what's on the page.
 
-**`axtree -i` (interactive mode):** Shows only actionable elements (buttons, links, inputs, etc.) as a flat numbered list. Most token-efficient way to see what you can interact with on a page — typically ~500 tokens vs ~4000 for full `dom`. After running `axtree -i`, use the ref numbers directly as selectors: `click 1`, `type 3 hello`. Refs are cached per URL and reused on revisits.
+**`axtree -i` (interactive mode):** Shows only actionable elements (buttons, links, inputs, etc.) as a flat numbered list. Most token-efficient way to see what you can interact with on a page - typically ~500 tokens vs ~4000 for full `dom`. After running `axtree -i`, use the ref numbers directly as selectors: `click 1`, `type 3 hello`. Refs are cached per URL and reused on revisits.
 
 **`observe`:** Like `axtree -i` but formats each element as a ready-to-use command (e.g. `click 1`, `type 3 <text>`, `select 5 <value>`). Generates the ref map as a side effect.
 
@@ -115,11 +115,11 @@ This means two agents can work side by side in the same Chrome instance without 
 
 When given a goal, follow this loop:
 
-1. **PLAN** — Break the goal into steps. Chain predictable sequences (click → type → press Enter) into a single command array.
+1. **PLAN** - Break the goal into steps. Chain predictable sequences (click → type → press Enter) into a single command array.
 
-2. **ACT** — Write command JSON (or array), run `node <base-dir>/webact.js run <sessionId>`. Actions auto-print a page brief.
+2. **ACT** - Write command JSON (or array), run `node <base-dir>/webact.js run <sessionId>`. Actions auto-print a page brief.
 
-3. **DECIDE** — Read the brief. Expected state? Continue. Login wall / CAPTCHA? Tell user. Need more detail? Use `dom`. Goal complete? Report.
+3. **DECIDE** - Read the brief. Expected state? Continue. Login wall / CAPTCHA? Tell user. Need more detail? Use `dom`. Goal complete? Report.
 
 4. **REPEAT** until done or blocked.
 
@@ -131,7 +131,7 @@ When given a goal, follow this loop:
 
 2. **DOM before screenshot.** Always try `dom` first. Only use `screenshot` if DOM output is empty/insufficient (canvas apps, image-heavy layouts).
 
-3. **Report actual content.** When the goal is information retrieval, extract and present the actual text from the page. Do not summarize what you think is there — show what IS there.
+3. **Report actual content.** When the goal is information retrieval, extract and present the actual text from the page. Do not summarize what you think is there - show what IS there.
 
 4. **Stop when blocked.** If you encounter a login wall, CAPTCHA, 2FA prompt, or cookie consent that blocks progress, tell the user. Do not guess credentials or attempt to bypass security.
 
@@ -167,7 +167,7 @@ Use `--full` only when you need the complete DOM (rare).
 ## Finding Elements
 
 Read the DOM output and identify elements by:
-1. **id**: `#search-input` — most reliable
+1. **id**: `#search-input` - most reliable
 2. **data-testid**: `[data-testid="submit-btn"]`
 3. **aria-label**: `[aria-label="Search"]`
 4. **class**: `.nav-link`
@@ -183,7 +183,7 @@ node webact.js eval "[...document.querySelectorAll('a')].find(a => a.textContent
 
 All examples assume you've already run `node webact.js launch`.
 
-**Navigate and read** (navigate auto-prints brief — no separate dom needed):
+**Navigate and read** (navigate auto-prints brief - no separate dom needed):
 ```bash
 node webact.js navigate https://news.ycombinator.com
 ```

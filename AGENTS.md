@@ -8,7 +8,7 @@ The `webact` skill is in `skills/webact/`. It lets you control any Chromium-base
 
 ## Setup
 
-No setup required — all dependencies are bundled.
+No setup required - all dependencies are bundled.
 
 ## Sandbox Note
 

@@ -1,6 +1,6 @@
 # webact
 
-A highly token efficient agent skill that lets you control any Chromium-based browser via the Chrome DevTools Protocol. Works with Claude Code, OpenAI Codex, and any tool supporting the [Agent Skills](https://agentskills.io) spec. Give the agent a goal — "check my inbox", "top stories on Hacker News", "search for flights" — and it drives the browser to get it done.
+A highly token efficient agent skill that lets you control any Chromium-based browser via the Chrome DevTools Protocol. Works with Claude Code, OpenAI Codex, and any tool supporting the [Agent Skills](https://agentskills.io) spec. Give the agent a goal - "check my inbox", "top stories on Hacker News", "search for flights" - and it drives the browser to get it done.
 
 No Playwright, no MCP, no browser automation frameworks. Raw CDP over WebSocket.
 
@@ -60,17 +60,17 @@ navigate to github.com and show my notifications
 search google for "best restaurants near me"
 ```
 
-Or describe any goal — the agent will figure out the steps.
+Or describe any goal - the agent will figure out the steps.
 
 ## How it works
 
 The agent follows a **perceive-act loop**:
 
-1. **Plan** — break the goal into steps
-2. **Act** — navigate, click, type via CDP commands
-3. **Perceive** — read the DOM to see what happened
-4. **Decide** — adapt, continue, or report results
-5. **Repeat** — until the goal is done
+1. **Plan** - break the goal into steps
+2. **Act** - navigate, click, type via CDP commands
+3. **Perceive** - read the DOM to see what happened
+4. **Decide** - adapt, continue, or report results
+5. **Repeat** - until the goal is done
 
 DOM is read first for token efficiency. Screenshots are a fallback for visual-heavy pages.
 
@@ -139,7 +139,7 @@ node webact.js close                   # Close current tab
 node webact.js run <sessionId>         # Run command from session command file
 ```
 
-**Ref-based targeting:** After `axtree -i` or `observe`, use the ref numbers directly as selectors — `click 1`, `type 3 hello`. Cached per URL.
+**Ref-based targeting:** After `axtree -i` or `observe`, use the ref numbers directly as selectors - `click 1`, `type 3 hello`. Cached per URL.
 
 The agent workflow: `launch` prints a session ID and command file path. Write command JSON to that file, then `node webact.js run <sessionId>`.
 
@@ -149,37 +149,37 @@ Each command is designed to minimize token usage while giving the agent enough c
 
 | Command | webact output | Playwright equivalent | Savings |
 |---------|--------------|----------------------|---------|
-| **brief** (auto) | ~200 chars | No equivalent — `page.content()` returns ~50k–500k chars of raw HTML | **~99%** |
+| **brief** (auto) | ~200 chars | No equivalent - `page.content()` returns ~50k–500k chars of raw HTML | **~99%** |
 | **dom** | ~1k–4k chars (compact, truncated) | `page.content()` ~50k–500k chars (full raw HTML) | **~95%** |
 | **dom \<selector\>** | ~200–4k chars (scoped subtree) | `locator.innerHTML()` ~1k–50k chars (raw HTML subtree) | **~80%** |
 | **axtree -i** | ~500–1.5k chars (flat numbered list) | `page.accessibility.snapshot()` ~10k–50k chars (full JSON tree) | **~95%** |
 | **axtree** | ~2k–6k chars (semantic tree) | `page.accessibility.snapshot()` ~10k–50k chars (full JSON tree) | **~80%** |
-| **observe** | ~500–1.5k chars (ready-to-use commands) | No equivalent | — |
+| **observe** | ~500–1.5k chars (ready-to-use commands) | No equivalent | - |
 | **screenshot** | ~100k+ (base64 PNG) | `page.screenshot()` ~100k+ (same) | same |
 | **console** | 200 chars/entry (truncated) | `page.on('console')` unbounded per entry | **~60%** |
 | **cookies** | 60 chars/value (truncated) | `context.cookies()` full JSON objects (~200–500 chars/cookie) | **~70%** |
 | **eval** | varies | `page.evaluate()` same | same |
 
 **Recommended flow for minimal token usage:**
-1. State-changing commands auto-print the **brief** (~200 chars) — often enough to decide next step
+1. State-changing commands auto-print the **brief** (~200 chars) - often enough to decide next step
 2. Need to find a specific element? Use **axtree -i** (~500 tokens) over **dom** (~4,000 chars)
 3. Use **dom \<selector\>** to scope to a subtree instead of reading the whole page
 4. Reserve **screenshot** for visual-heavy pages where DOM/axtree are insufficient
 
 ## vs. agent-browser
 
-[agent-browser](https://github.com/vercel-labs/agent-browser) is Vercel's browser automation CLI for AI agents. It wraps Playwright and adds an accessibility snapshot system with refs. Both tools aim to give LLMs browser control — here's how they compare.
+[agent-browser](https://github.com/vercel-labs/agent-browser) is Vercel's browser automation CLI for AI agents. It wraps Playwright and adds an accessibility snapshot system with refs. Both tools aim to give LLMs browser control - here's how they compare.
 
 |  | **webact** | **agent-browser** |
 |--|-----------|------------------|
-| **What it is** | Browser CLI for agents — raw CDP, single file | Browser CLI for agents — Rust CLI + Node.js daemon + Playwright |
+| **What it is** | Browser CLI for agents - raw CDP, single file | Browser CLI for agents - Rust CLI + Node.js daemon + Playwright |
 | **Architecture** | CLI connects directly to Chrome via CDP WebSocket | Rust CLI &rarr; Unix socket &rarr; Node.js daemon &rarr; Playwright &rarr; browser |
 | **Install size** | 196 KB (bundled, zero deps) | ~89 MB node_modules + 162 MB Chromium download |
 | **Source** | Single file, ~2,200 lines | ~9,600 lines across dist/ + Playwright dependency |
-| **Setup** | Plugin install or copy — no npm install needed | `npm install agent-browser && agent-browser install` (downloads Chromium) |
-| **Uses your browser** | Yes — your Chrome, your cookies, your logins | No — launches bundled Chromium with clean state |
-| **Headed mode** | Always — you see what the agent sees | Headless by default (`--headed` flag to see) |
-| **Auth / logins** | Already signed in — uses your real browser session | Requires auth vault, state persistence, or login flows |
+| **Setup** | Plugin install or copy - no npm install needed | `npm install agent-browser && agent-browser install` (downloads Chromium) |
+| **Uses your browser** | Yes - your Chrome, your cookies, your logins | No - launches bundled Chromium with clean state |
+| **Headed mode** | Always - you see what the agent sees | Headless by default (`--headed` flag to see) |
+| **Auth / logins** | Already signed in - uses your real browser session | Requires auth vault, state persistence, or login flows |
 | **Skill prompt size** | ~10 KB | ~19 KB |
 | **Session model** | Isolated sessions share one Chrome instance | Daemon process with named sessions |
 
@@ -196,7 +196,7 @@ Tested on the same pages at the same time. Chars shown; divide by ~4 for approxi
 | **Interactive elements** (axtree -i vs snapshot -i) | 5,997 chars | 7,901 chars | Hacker News |
 | **Interactive elements** (axtree -i vs snapshot -i) | 6,019 chars | 8,337 chars | GitHub repo |
 
-webact's navigate auto-brief includes page summary, inputs, links, and element counts (186–756 chars). agent-browser's open shows only URL and title (73–149 chars) — smaller, but the agent needs a follow-up `snapshot` call to see the page.
+webact's navigate auto-brief includes page summary, inputs, links, and element counts (186–756 chars). agent-browser's open shows only URL and title (73–149 chars) - smaller, but the agent needs a follow-up `snapshot` call to see the page.
 
 For full page reading, webact's `dom` is truncated to ~4k chars by default. agent-browser's `snapshot` returns the full accessibility tree (46k–105k chars). On a GitHub repo page, that's **26x** more tokens.
 
@@ -212,21 +212,21 @@ Playwright is a browser automation framework. WebAct is an agent skill. They sol
 
 |  | **webact** | **Playwright** |
 |--|-----------|---------------|
-| **What it is** | Browser CLI for agents — the LLM decides what to do at each step | Test/automation framework — you write the script |
+| **What it is** | Browser CLI for agents - the LLM decides what to do at each step | Test/automation framework - you write the script |
 | **Protocol** | Raw CDP over WebSocket | CDP + custom protocol layer |
 | **Dependencies** | 0 (bundled) | ~200 MB (bundles its own Chromium) |
 | **Source** | Single file, ~2,200 lines | ~150k+ lines across packages |
-| **Uses your browser** | Yes — connects to your existing Chrome with your cookies, extensions, logins | No — launches a separate bundled browser with clean state |
-| **Agent-native** | Yes — compact DOM, accessibility tree, auto-briefs, ref-based targeting, token budgets | No — returns raw page content, no token awareness |
+| **Uses your browser** | Yes - connects to your existing Chrome with your cookies, extensions, logins | No - launches a separate bundled browser with clean state |
+| **Agent-native** | Yes - compact DOM, accessibility tree, auto-briefs, ref-based targeting, token budgets | No - returns raw page content, no token awareness |
 | **Session model** | Isolated sessions share one Chrome instance; multiple agents work side by side | Each test gets its own browser context |
 | **Page reading** | Compact DOM (~4k chars), axtree (~500–6k chars), auto-brief (~200 chars) | Full HTML via `page.content()`, no built-in compaction |
 | **Setup** | Any Chromium browser you already have | `npm install playwright && npx playwright install` |
 | **Cross-browser** | Chromium-only (Chrome, Edge, Brave, Arc, etc.) | Chromium, Firefox, WebKit |
-| **Headed mode** | Always — you see what the agent sees | Headless by default |
-| **Auth / logins** | Already signed in — uses your real browser session | Requires explicit auth setup (storage state, login flows) |
+| **Headed mode** | Always - you see what the agent sees | Headless by default |
+| **Auth / logins** | Already signed in - uses your real browser session | Requires explicit auth setup (storage state, login flows) |
 | **Best for** | AI agents browsing the web on your behalf | Automated testing, scraping, scripting |
 
-**When to use webact:** You want an AI agent to browse the web using your actual browser — check your email, read a page, fill out a form, accomplish a goal. The agent perceives, decides, and acts. You stay logged in everywhere.
+**When to use webact:** You want an AI agent to browse the web using your actual browser - check your email, read a page, fill out a form, accomplish a goal. The agent perceives, decides, and acts. You stay logged in everywhere.
 
 **When to use Playwright:** You're writing deterministic test suites, scraping at scale, or need cross-browser coverage. You control every step in code.
 
