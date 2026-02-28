@@ -187,20 +187,20 @@ Each command is designed to minimize token usage while giving the agent enough c
 
 Tested on the same pages at the same time. Chars shown; divide by ~4 for approximate tokens.
 
-| Command | **webact** | **agent-browser** | Page |
-|---------|-----------|------------------|------|
-| **Navigate/open** (auto-brief) | 186 chars | 73 chars | Hacker News |
-| **Navigate/open** (auto-brief) | 756 chars | 149 chars | GitHub repo |
-| **Full page read** (dom vs snapshot) | 4,051 chars | 46,565 chars | Hacker News |
-| **Full page read** (dom vs snapshot) | 4,049 chars | 104,890 chars | GitHub repo |
-| **Interactive elements** (axtree -i vs snapshot -i) | 5,997 chars | 7,901 chars | Hacker News |
-| **Interactive elements** (axtree -i vs snapshot -i) | 6,019 chars | 8,337 chars | GitHub repo |
+| Scenario | **webact** | **agent-browser** | Page |
+|----------|-----------|------------------|------|
+| **Navigate + see page** | `navigate` = 186 chars | `open` + `snapshot -i` = 7,974 chars | Hacker News |
+| **Navigate + see page** | `navigate` = 756 chars | `open` + `snapshot -i` = 8,486 chars | GitHub repo |
+| **Full page read** | `dom` = 4,051 chars | `snapshot` = 46,565 chars | Hacker News |
+| **Full page read** | `dom` = 4,049 chars | `snapshot` = 104,890 chars | GitHub repo |
+| **Interactive elements** | `axtree -i` = 5,997 chars | `snapshot -i` = 7,901 chars | Hacker News |
+| **Interactive elements** | `axtree -i` = 6,019 chars | `snapshot -i` = 8,337 chars | GitHub repo |
 
-webact's navigate auto-brief includes page summary, inputs, links, and element counts (186–756 chars). agent-browser's open shows only URL and title (73–149 chars) - smaller, but the agent needs a follow-up `snapshot` call to see the page.
+webact's `navigate` auto-prints a brief with page summary, inputs, links, and element counts - enough to decide the next step in one call. agent-browser's `open` only prints URL and title, so the agent always needs a follow-up `snapshot` to see the page.
 
-For full page reading, webact's `dom` is truncated to ~4k chars by default. agent-browser's `snapshot` returns the full accessibility tree (46k–105k chars). On a GitHub repo page, that's **26x** more tokens.
+For full page reading, webact's `dom` is truncated to ~4k chars by default. agent-browser's `snapshot` returns the full accessibility tree (46k-105k chars). On a GitHub repo page, that's **26x** more tokens.
 
-For interactive elements, both tools offer a flat list with refs. webact's `axtree -i` and agent-browser's `snapshot -i` are comparable in size, with webact ~25–28% smaller.
+For interactive elements, both tools offer a flat list with refs. webact's `axtree -i` is ~25-28% smaller than agent-browser's `snapshot -i`.
 
 **When to use webact:** You want zero-setup browser control using your actual logged-in Chrome, with minimal token overhead. One file, no downloads.
 
