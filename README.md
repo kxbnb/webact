@@ -172,11 +172,11 @@ Each command is designed to minimize token usage while giving the agent enough c
 
 |  | **webact** | **agent-browser** |
 |--|-----------|------------------|
-| **What it is** | Browser CLI for agents — raw CDP, single file | Browser CLI for agents — Playwright wrapper with snapshot system |
-| **Protocol** | Raw CDP over WebSocket | Playwright (CDP + custom protocol layer) |
+| **What it is** | Browser CLI for agents — raw CDP, single file | Browser CLI for agents — Rust CLI + Node.js daemon + Playwright |
+| **Architecture** | CLI connects directly to Chrome via CDP WebSocket | Rust CLI &rarr; Unix socket &rarr; Node.js daemon &rarr; Playwright &rarr; browser |
 | **Install size** | 196 KB (bundled, zero deps) | ~89 MB node_modules + 162 MB Chromium download |
 | **Source** | Single file, ~2,200 lines | ~9,600 lines across dist/ + Playwright dependency |
-| **Setup** | `npm install` or plugin install — done | `npm install agent-browser && agent-browser install` (downloads Chromium) |
+| **Setup** | Plugin install or copy — no npm install needed | `npm install agent-browser && agent-browser install` (downloads Chromium) |
 | **Uses your browser** | Yes — your Chrome, your cookies, your logins | No — launches bundled Chromium with clean state |
 | **Headed mode** | Always — you see what the agent sees | Headless by default (`--headed` flag to see) |
 | **Auth / logins** | Already signed in — uses your real browser session | Requires auth vault, state persistence, or login flows |
