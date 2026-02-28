@@ -166,6 +166,46 @@ Each command is designed to minimize token usage while giving the agent enough c
 3. Use **dom \<selector\>** to scope to a subtree instead of reading the whole page
 4. Reserve **screenshot** for visual-heavy pages where DOM/axtree are insufficient
 
+## vs. agent-browser
+
+[agent-browser](https://github.com/vercel-labs/agent-browser) is Vercel's browser automation CLI for AI agents. It wraps Playwright and adds an accessibility snapshot system with refs. Both tools aim to give LLMs browser control — here's how they compare.
+
+|  | **webact** | **agent-browser** |
+|--|-----------|------------------|
+| **What it is** | Agent skill — raw CDP, single file | Agent CLI — Playwright wrapper with snapshot system |
+| **Protocol** | Raw CDP over WebSocket | Playwright (CDP + custom protocol layer) |
+| **Install size** | 196 KB (bundled, zero deps) | ~89 MB node_modules + 162 MB Chromium download |
+| **Source** | Single file, ~2,200 lines | ~9,600 lines across dist/ + Playwright dependency |
+| **Setup** | `npm install` or plugin install — done | `npm install agent-browser && agent-browser install` (downloads Chromium) |
+| **Uses your browser** | Yes — your Chrome, your cookies, your logins | No — launches bundled Chromium with clean state |
+| **Headed mode** | Always — you see what the agent sees | Headless by default (`--headed` flag to see) |
+| **Auth / logins** | Already signed in — uses your real browser session | Requires auth vault, state persistence, or login flows |
+| **Skill prompt size** | ~10 KB | ~19 KB |
+| **Session model** | Isolated sessions share one Chrome instance | Daemon process with named sessions |
+
+### Token comparison (same pages, measured output)
+
+Tested on the same pages at the same time. Chars shown; divide by ~4 for approximate tokens.
+
+| Command | **webact** | **agent-browser** | Page |
+|---------|-----------|------------------|------|
+| **Navigate/open** (auto-brief) | 186 chars | 73 chars | Hacker News |
+| **Navigate/open** (auto-brief) | 756 chars | 149 chars | GitHub repo |
+| **Full page read** (dom vs snapshot) | 4,051 chars | 46,565 chars | Hacker News |
+| **Full page read** (dom vs snapshot) | 4,049 chars | 104,890 chars | GitHub repo |
+| **Interactive elements** (axtree -i vs snapshot -i) | 5,997 chars | 7,901 chars | Hacker News |
+| **Interactive elements** (axtree -i vs snapshot -i) | 6,019 chars | 8,337 chars | GitHub repo |
+
+webact's navigate auto-brief includes page summary, inputs, links, and element counts (186–756 chars). agent-browser's open shows only URL and title (73–149 chars) — smaller, but the agent needs a follow-up `snapshot` call to see the page.
+
+For full page reading, webact's `dom` is truncated to ~4k chars by default. agent-browser's `snapshot` returns the full accessibility tree (46k–105k chars). On a GitHub repo page, that's **26x** more tokens.
+
+For interactive elements, both tools offer a flat list with refs. webact's `axtree -i` and agent-browser's `snapshot -i` are comparable in size, with webact ~25–28% smaller.
+
+**When to use webact:** You want zero-setup browser control using your actual logged-in Chrome, with minimal token overhead. One file, no downloads.
+
+**When to use agent-browser:** You need headless Chromium, auth vaults, device emulation, network mocking, visual diffing, or iOS simulator support. You're OK with the install size and Playwright dependency.
+
 ## vs. Playwright
 
 Playwright is a browser automation framework. WebAct is an agent skill. They solve different problems but get compared because both drive browsers.
