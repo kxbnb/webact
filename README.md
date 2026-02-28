@@ -1,10 +1,20 @@
 # webact - token-efficient browser control for AI agents
 
-A highly token efficient agent skill that lets you control any Chromium-based browser via the Chrome DevTools Protocol. Works with Claude Code, OpenAI Codex, and any tool supporting the [Agent Skills](https://agentskills.io) spec. Give the agent a goal - "check my inbox", "top stories on Hacker News", "search for flights" - and it drives the browser to get it done.
+A highly token efficient agent skill that lets you control any Chromium-based browser via the Chrome DevTools Protocol. Works with Claude Code, Cursor, Codex, Windsurf, Cline, Copilot, OpenCode, Goose, and any tool supporting the [Agent Skills](https://agentskills.io) spec. Give the agent a goal - "check my inbox", "top stories on Hacker News", "search for flights" - and it drives the browser to get it done.
 
 No Playwright, no MCP, no browser automation frameworks. Raw CDP over WebSocket.
 
 ## Install
+
+### All agents (Cursor, Codex, Windsurf, Cline, Copilot, OpenCode, Goose, and more)
+
+```bash
+npx skills add kxbnb/webact
+```
+
+Auto-detects your agent and installs the skill to the right directory. Powered by Vercel's [skills](https://github.com/vercel-labs/skills) CLI.
+
+> **Note (Codex):** Codex's sandbox blocks local networking by default. To allow CDP connections, add a rule to allow `node` access to `localhost` on the CDP port (auto-discovered at launch), or run with `--full-auto` mode.
 
 ### Claude Code
 
@@ -20,29 +30,8 @@ claude plugin marketplace add kxbnb/webact
 claude plugin install webact@webact
 ```
 
-### OpenAI Codex
+### Manual
 
-From inside Codex:
-```
-/skills install https://github.com/kxbnb/webact.git
-```
-
-Or from the command line:
-```bash
-codex skills install https://github.com/kxbnb/webact.git
-```
-
-Or manually:
-```bash
-git clone https://github.com/kxbnb/webact.git
-cp -r webact/skills/webact ~/.codex/skills/webact
-```
-
-> **Note:** Codex's sandbox blocks local networking by default. To allow CDP connections, add a rule to allow `node` access to `localhost` on the CDP port (auto-discovered at launch), or run with `--full-auto` mode.
-
-### Other agents (Cursor, Copilot, etc.)
-
-Drop the skill into your project:
 ```bash
 git clone https://github.com/kxbnb/webact.git /tmp/webact
 cp -r /tmp/webact/skills/webact .agents/skills/webact
