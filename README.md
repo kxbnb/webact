@@ -1,6 +1,6 @@
 # webact
 
-An agent skill that lets you control any Chromium-based browser via the Chrome DevTools Protocol. Works with Claude Code, OpenAI Codex, and any tool supporting the [Agent Skills](https://agentskills.io) spec. Give the agent a goal — "check my inbox", "top stories on Hacker News", "search for flights" — and it drives the browser to get it done.
+A highly token efficient agent skill that lets you control any Chromium-based browser via the Chrome DevTools Protocol. Works with Claude Code, OpenAI Codex, and any tool supporting the [Agent Skills](https://agentskills.io) spec. Give the agent a goal — "check my inbox", "top stories on Hacker News", "search for flights" — and it drives the browser to get it done.
 
 No Playwright, no MCP, no browser automation frameworks. Raw CDP over WebSocket.
 
@@ -154,21 +154,18 @@ The agent workflow: `launch` prints a session ID and command file path. Write co
 
 Each command is designed to minimize token usage while giving the agent enough context to decide its next step.
 
-| Command | Output size | Truncation limit | Notes |
-|---------|------------|-------------------|-------|
-| **brief** (auto) | ~200 chars | — | Auto-printed after state-changing commands (navigate, click, press, scroll, etc.). Shows URL, title, top 5 inputs, top 5 buttons, top 8 links, plus total element counts. |
-| **dom** | ~1,000–4,000 chars | 4,000 chars | Compact DOM — strips scripts, styles, SVGs, hidden elements, collapses whitespace. Only interactive and structural tags shown. |
-| **dom --full** | unbounded | 100,000 chars | Full DOM with no truncation. Rarely needed. |
-| **dom \<selector\>** | varies | 4,000 chars | Scoped to a subtree — significantly smaller on large pages. |
-| **axtree -i** | ~500–1,500 chars | 6,000 chars | Interactive elements only as a flat numbered list. Most token-efficient way to see what's actionable. |
-| **axtree** | ~2,000–6,000 chars | 6,000 chars | Full accessibility tree with semantic roles, names, values, and properties. |
-| **observe** | ~500–1,500 chars | — | Like `axtree -i` but formatted as ready-to-use commands. |
-| **screenshot** | ~100k+ (base64 PNG) | — | Full viewport PNG. Use as fallback — costs significantly more tokens than text commands. |
-| **pdf** | file on disk | — | Saved to disk, not returned as output. Zero token cost. |
-| **console** | varies | 200 chars/entry | Captures recent console output. Each log entry truncated to 200 chars. |
-| **console listen** | streaming | 500 chars/entry | Real-time listener with larger per-entry limit. |
-| **cookies** | varies | 60 chars/value | Cookie values truncated to 60 chars each. |
-| **eval** | varies | — | Raw JS result, no truncation. Keep expressions focused. |
+| Command | webact output | Playwright equivalent | Savings |
+|---------|--------------|----------------------|---------|
+| **brief** (auto) | ~200 chars | No equivalent — `page.content()` returns ~50k–500k chars of raw HTML | **~99%** |
+| **dom** | ~1k–4k chars (compact, truncated) | `page.content()` ~50k–500k chars (full raw HTML) | **~95%** |
+| **dom \<selector\>** | ~200–4k chars (scoped subtree) | `locator.innerHTML()` ~1k–50k chars (raw HTML subtree) | **~80%** |
+| **axtree -i** | ~500–1.5k chars (flat numbered list) | `page.accessibility.snapshot()` ~10k–50k chars (full JSON tree) | **~95%** |
+| **axtree** | ~2k–6k chars (semantic tree) | `page.accessibility.snapshot()` ~10k–50k chars (full JSON tree) | **~80%** |
+| **observe** | ~500–1.5k chars (ready-to-use commands) | No equivalent | — |
+| **screenshot** | ~100k+ (base64 PNG) | `page.screenshot()` ~100k+ (same) | same |
+| **console** | 200 chars/entry (truncated) | `page.on('console')` unbounded per entry | **~60%** |
+| **cookies** | 60 chars/value (truncated) | `context.cookies()` full JSON objects (~200–500 chars/cookie) | **~70%** |
+| **eval** | varies | `page.evaluate()` same | same |
 
 **Recommended flow for minimal token usage:**
 1. State-changing commands auto-print the **brief** (~200 chars) — often enough to decide next step
